@@ -1,0 +1,10 @@
+{
+  "device": "TW-100 torque wrench",
+  "maintenance": {
+    "calibration_interval_days": 180,
+    "precondition": "remove the tool from service before calibration"
+  },
+  "exceptions": [
+    "recalibrate immediately after overload or impact"
+  ]
+}
