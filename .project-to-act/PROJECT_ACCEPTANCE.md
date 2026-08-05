@@ -5,7 +5,7 @@
 - 结论：`0.1.2` 的 A-001..A-018/G-005 全部通过
 - 验收范围：独立 LangGraph P0、本地完整产品 Gate，以及新增任意领域路由/分类/沉淀能力 Gate
 - 最后检查：2026-08-05
-- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；生产存储/身份认证/容量压测、真实多模态、向量或图混合检索和领域专家质量认证仍未在本轮验收范围
+- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、向量或图混合检索和领域专家质量认证仍未在本轮验收范围
 
 ## 验收标准
 
@@ -50,6 +50,8 @@
 | E-014 | 2026-08-04 | F-017 纠正驱动回归：44 项离线测试、Ruff/compileall、真实 GLM/HTTP/AAWO、真实高风险 correction/stale revision、构建/洁净安装 | 0 | 主报告 `1A611A0F...BCD69`；alias `147C04B3...E5783`；结构化 `D423C107...71E9B`；编号 `FEA7E5E3...DFE8A`；Ledger `3C5B4ACD...BFDA9`；wheel `57AA3198...42DF6` | 主旅程 62/62、alias 10/10、结构化 6/6、编号 6/6、Ledger 412 条完整；高风险 correction 强制审批且 stale 未激活；离线 44/44；0.1.2 洁净安装通过 | `docs/DEEP_INTEGRITY_FIX_REPORT_2026-08-04.md`、`build/deep-integrity-gate-20260804c/evidence/`、`dist/universal_knowledge_agent_langgraph-0.1.2-py3-none-any.whl` | Provider/模型/完整性合同变更前 |
 | E-015 | 2026-08-05 | `llm-api-config` 受管 `glm` 注入与 `doctor --connect`；五领域真实 HTTP/GLM/AAWO ingest→approve→retrieve；SQLite 分类/证据关联审计；跨租户负例；44 项 pytest 与 Ruff | 0（已声明的五领域核心门禁通过；无作用域纯度为诊断项） | 报告 SHA-256 `EC16067E...AF3ADE`；EvidenceLedger `098B3AFC...23F51`；provider revision `openai-compatible:glm-5.2` | 5/5 稳定分类、证据绑定和带领域别名精确检索；环境领域正确 `review_required`；跨租户为 `unknown`；Ledger 105 条且完整；无作用域改写查询目标命中 5/5，但 4/5 混入其他领域结果，宏平均纯度约 53% | `build/five-domain-gate-20260805/evidence/five-domain-gate-report.json`、`build/five-domain-gate-20260805/evidence/evidence-ledger.sqlite3` | Provider/模型/检索或 taxonomy 合同变更前 |
 
+| E-016 | 2026-08-05 | `gh repo create --public`、`git push -u origin main`、`gh repo view`、远端 commit API 核验 | 0 | commit `697f645c6c406b4a1634be394b9ec7dc6b420a75`；仓库 `https://github.com/redmaplewww/universal-knowledge-agent-langgraph` | 仓库为 PUBLIC，默认分支 `main`；62 个源码/测试/文档文件已推送；`.env.local`、状态、build/dist 未纳入；因 OAuth 缺少 `workflow` scope，CI workflow 未上传 | GitHub 远端仓库与本地 `git status` | 后续提交前 |
+
 ## Gate 记录
 
 | Gate ID | 日期 | Gate | 对象 | 结果 | 证据 ID | 豁免与确认人 |
@@ -62,6 +64,7 @@
 
 ## 验收记录
 
+- 2026-08-05｜公开仓库与手册交付｜E-016｜远端仓库为 PUBLIC，main 已跟踪远端，README、用户手册、运维手册和架构文档可访问；凭据扫描无匹配，运行目录未上传；CI workflow 受 GitHub OAuth scope 限制未提交｜公开发布完成；Actions 待重新授权后另行启用。
 - 2026-08-05｜五领域真实 LLM 诊断｜E-015｜网络安全、化学、土木工程、环境、心理学的分类/证据/作用域检索/隔离核心项全部通过；高风险失败关闭正常；未限定领域时目标召回 5/5，但结果纯度不足，故只登记诊断证据，不新增或提升生产 Gate｜A-001..A-018/G-005 状态不变。
 - 2026-08-04｜深层完整性与隔离纠正回归｜E-014｜首次 59/62 与二次 60/61 失败均保留并驱动冲突规则、revision 幂等与理解缓存修复；最终真实主旅程及全部扩展回归通过，44 项离线测试和 0.1.2 洁净安装通过｜A-018/G-005 通过。
 - 2026-08-04｜任意领域可靠性纠正回归｜E-013｜上一轮五类失败全部修复；真实 GLM/HTTP 的 82 条 AAWO 旅程全部通过，数据库关联、审核失败关闭、混合文档与来源编号审计均无失败；32 项离线测试和 0.1.1 洁净安装通过｜A-017/G-004 通过；G-003 原失败记录保留。
