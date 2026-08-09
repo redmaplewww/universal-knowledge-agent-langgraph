@@ -5,7 +5,7 @@
 - 结论：`0.1.2` 的 A-001..A-018/G-005 全部通过
 - 验收范围：独立 LangGraph P0、本地完整产品 Gate，以及新增任意领域路由/分类/沉淀能力 Gate
 - 最后检查：2026-08-05
-- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、向量或图混合检索和领域专家质量认证仍未在本轮验收范围
+- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；`GET /v1/threads/{thread_id}` 顶层缺少 `thread_id`（E-017 生命周期断言失败）；GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、向量或图混合检索和领域专家质量认证仍未在本轮验收范围
 
 ## 验收标准
 
@@ -51,6 +51,7 @@
 | E-015 | 2026-08-05 | `llm-api-config` 受管 `glm` 注入与 `doctor --connect`；五领域真实 HTTP/GLM/AAWO ingest→approve→retrieve；SQLite 分类/证据关联审计；跨租户负例；44 项 pytest 与 Ruff | 0（已声明的五领域核心门禁通过；无作用域纯度为诊断项） | 报告 SHA-256 `EC16067E...AF3ADE`；EvidenceLedger `098B3AFC...23F51`；provider revision `openai-compatible:glm-5.2` | 5/5 稳定分类、证据绑定和带领域别名精确检索；环境领域正确 `review_required`；跨租户为 `unknown`；Ledger 105 条且完整；无作用域改写查询目标命中 5/5，但 4/5 混入其他领域结果，宏平均纯度约 53% | `build/five-domain-gate-20260805/evidence/five-domain-gate-report.json`、`build/five-domain-gate-20260805/evidence/evidence-ledger.sqlite3` | Provider/模型/检索或 taxonomy 合同变更前 |
 
 | E-016 | 2026-08-05 | `gh repo create --public`、`git push -u origin main`、`gh repo view`、远端 commit API 核验 | 0 | commit `697f645c6c406b4a1634be394b9ec7dc6b420a75`；仓库 `https://github.com/redmaplewww/universal-knowledge-agent-langgraph` | 仓库为 PUBLIC，默认分支 `main`；62 个源码/测试/文档文件已推送；`.env.local`、状态、build/dist 未纳入；因 OAuth 缺少 `workflow` scope，CI workflow 未上传 | GitHub 远端仓库与本地 `git status` | 后续提交前 |
+| E-017 | 2026-08-09 | `llm-api-config` 注入 `glm`；`doctor --connect`；AAWO `HttpAdapter`/`CustomerSimulationRunner` 真实 HTTP 回归；SQLite 数据库审计；`pytest`/Ruff/账本校验 | 0（领域/对抗 Gate）；1（生命周期 Gate，保留失败） | 领域报告 `CEC6CB5B...88649C1A`；领域 Ledger `6CD29B32...7FF6FF0E`；生命周期报告 `04B192E1...9EAE473C`；生命周期 Ledger `F4E6E04D...1106DB5B`；provider `openai-compatible:glm-5.2` | 62/62 领域与对抗旅程通过；领域 Ledger 310 条、完整性错误 0；生命周期 8 个 AAWO 运行通过，Skill/纠正/stale/Evolution fail-closed/错误合同通过；1 个接口契约失败：线程状态返回 200 但顶层缺少 `thread_id`；离线 44/44、Ruff、project-to-act 校验通过 | `build/aawo-complete-gate-20260809/arbitrary-domain-gate-report.json`、`build/aawo-complete-gate-20260809/evidence/lifecycle-gate-report.json`、对应 SQLite Ledger | 修复 API 响应合同或变更测试合同前 |
 
 ## Gate 记录
 
@@ -64,6 +65,7 @@
 
 ## 验收记录
 
+- 2026-08-09｜AAWO 真实 LLM 完整回归｜E-017｜领域/对抗客户旅程 62/62 通过；生命周期检查保留 1 个线程状态响应契约失败，2 个 HTTP 422 是预期安全拒绝的失败终态；未将失败改写为通过，A-001..A-018/G-005 状态不变，待修复后重跑生命周期 Gate。
 - 2026-08-05｜公开仓库与手册交付｜E-016｜远端仓库为 PUBLIC，main 已跟踪远端，README、用户手册、运维手册和架构文档可访问；凭据扫描无匹配，运行目录未上传；CI workflow 受 GitHub OAuth scope 限制未提交｜公开发布完成；Actions 待重新授权后另行启用。
 - 2026-08-05｜五领域真实 LLM 诊断｜E-015｜网络安全、化学、土木工程、环境、心理学的分类/证据/作用域检索/隔离核心项全部通过；高风险失败关闭正常；未限定领域时目标召回 5/5，但结果纯度不足，故只登记诊断证据，不新增或提升生产 Gate｜A-001..A-018/G-005 状态不变。
 - 2026-08-04｜深层完整性与隔离纠正回归｜E-014｜首次 59/62 与二次 60/61 失败均保留并驱动冲突规则、revision 幂等与理解缓存修复；最终真实主旅程及全部扩展回归通过，44 项离线测试和 0.1.2 洁净安装通过｜A-018/G-005 通过。
