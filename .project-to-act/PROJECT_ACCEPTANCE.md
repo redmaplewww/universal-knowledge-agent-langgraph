@@ -73,6 +73,11 @@
 - Real browser verification against an isolated `demo-ui/private` backend passed: provider health (`glm-5.2`), intake, approval resume, retrieval, evidence-pack display, and event timeline.
 - Preview endpoints remain loopback-only: frontend `127.0.0.1:8890`, API `127.0.0.1:8877`.
 - This acceptance covers local preview usability; it does not claim production hosting, IAM, gateway policy, or capacity readiness.
+
+## Frontend readability refinement
+
+- The local preview now uses a light paper-surface palette with dark ink, high-contrast controls, and amber-only approval emphasis.
+- Browser screenshots and DOM inspection confirm the primary desktop layout remains readable after the theme change.
 - 2026-08-05｜公开仓库与手册交付｜E-016｜远端仓库为 PUBLIC，main 已跟踪远端，README、用户手册、运维手册和架构文档可访问；凭据扫描无匹配，运行目录未上传；CI workflow 受 GitHub OAuth scope 限制未提交｜公开发布完成；Actions 待重新授权后另行启用。
 - 2026-08-05｜五领域真实 LLM 诊断｜E-015｜网络安全、化学、土木工程、环境、心理学的分类/证据/作用域检索/隔离核心项全部通过；高风险失败关闭正常；未限定领域时目标召回 5/5，但结果纯度不足，故只登记诊断证据，不新增或提升生产 Gate｜A-001..A-018/G-005 状态不变。
 - 2026-08-04｜深层完整性与隔离纠正回归｜E-014｜首次 59/62 与二次 60/61 失败均保留并驱动冲突规则、revision 幂等与理解缓存修复；最终真实主旅程及全部扩展回归通过，44 项离线测试和 0.1.2 洁净安装通过｜A-018/G-005 通过。

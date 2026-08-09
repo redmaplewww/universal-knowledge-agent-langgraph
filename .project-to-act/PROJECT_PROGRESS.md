@@ -21,6 +21,11 @@
 - Browser verification passed for health, `accepted -> interrupt -> approve -> active`, scoped retrieval, evidence-pack rendering, and thread event timeline.
 - Detailed evidence and run instructions: `docs/FRONTEND_PREVIEW.md`.
 
+## Frontend readability refinement (2026-08-09)
+
+- Reworked the control room from dark mode to a high-contrast light theme after visual review.
+- Browser verification confirms the hero, metric cards, intake form, retrieval panel, and evidence trail remain readable on the running preview.
+
 ## 阻塞项
 
 | 阻塞 | 影响 | 解除条件 | 状态 |
