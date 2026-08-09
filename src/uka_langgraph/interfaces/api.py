@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from uka_langgraph.infrastructure.settings import Settings
@@ -70,6 +71,18 @@ def create_app(
         title="Universal Knowledge Agent",
         version="0.1.2",
         description="Evidence-first local LangGraph knowledge agent API",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:8890",
+            "http://localhost:8890",
+            "http://127.0.0.1:3000",
+            "http://localhost:3000",
+        ],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
     )
 
     @app.get("/health")

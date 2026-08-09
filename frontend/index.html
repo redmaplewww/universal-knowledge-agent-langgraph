@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1019" />
+    <title>Universal Knowledge Agent · Control Room</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="Universal Knowledge Agent">
+          <span class="brand-mark"><span></span><span></span><span></span></span>
+          <span>
+            <strong>UNIVERSAL KNOWLEDGE</strong>
+            <small>LANGGRAPH CONTROL ROOM</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <div class="connection-pill" id="connection-pill"><i></i><span id="connection-label">连接检查中</span></div>
+          <button class="ghost-button" id="refresh-button" type="button">刷新状态 <kbd>R</kbd></button>
+        </div>
+      </header>
+
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> EVIDENCE-FIRST KNOWLEDGE OPERATIONS</div>
+          <h1>让每一条知识，<em>找到它该在的位置。</em></h1>
+          <p>用作用域、证据链和人工审批，把任意领域的输入沉淀为可检索、可追溯、可演进的知识资产。</p>
+          <div class="hero-tags"><span>任意领域路由</span><span>安全作用域</span><span>证据优先</span></div>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit-ring ring-large"></div><div class="orbit-ring ring-small"></div>
+          <div class="orbit-core"><span>UKA</span><small>0.1.2</small></div>
+          <span class="orbit-node node-a">FINANCE</span><span class="orbit-node node-b">MEDICAL</span><span class="orbit-node node-c">SOFTWARE</span>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Agent metrics">
+        <article class="metric-card accent-cyan"><span class="metric-label">PROVIDER MODE</span><strong id="metric-mode">—</strong><small id="metric-model">正在读取模型</small></article>
+        <article class="metric-card"><span class="metric-label">GRAPH VERSION</span><strong id="metric-version">—</strong><small>LangGraph runtime</small></article>
+        <article class="metric-card accent-amber"><span class="metric-label">EVIDENCE STANDARD</span><strong>TRACEABLE</strong><small>每个结论都绑定证据</small></article>
+        <article class="metric-card"><span class="metric-label">ACTIVE SCOPE</span><strong id="metric-scope">private</strong><small id="metric-tenant">tenant / demo-ui</small></article>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="main-column">
+          <div class="section-heading"><div><span class="section-index">01</span><h2>Knowledge intake</h2></div><span class="section-note">把原始材料交给路由器</span></div>
+          <article class="panel intake-panel">
+            <div class="panel-topline"><div class="status-label"><span class="pulse"></span> READY TO INGEST</div><span class="mono muted">POST /v1/ingest</span></div>
+            <label class="field-label" for="source-text">SOURCE MATERIAL <span>必填</span></label>
+            <textarea id="source-text" rows="6" placeholder="粘贴一段材料，例如：光伏组件在高温下会出现功率衰减，建议在夏季峰值时段进行温度监控……"></textarea>
+            <div class="field-row">
+              <label class="field-group"><span class="field-label">CLASSIFICATION</span><select id="classification"><option value="internal">Internal · 内部</option><option value="confidential">Confidential · 机密</option><option value="public">Public · 公开</option></select></label>
+              <label class="field-group"><span class="field-label">ACTOR</span><input id="actor-id" value="control-room" /></label>
+              <button class="primary-button" id="ingest-button" type="button"><span>送入知识图谱</span><b>↗</b></button>
+            </div>
+            <div class="notice hidden" id="ingest-notice"></div>
+          </article>
+
+          <div class="section-heading retrieval-heading"><div><span class="section-index">02</span><h2>Scoped retrieval</h2></div><span class="section-note">只在你允许的边界内回答</span></div>
+          <article class="panel retrieval-panel">
+            <div class="query-line"><div class="query-icon">⌕</div><input id="query-text" value="这个领域的关键注意事项是什么？" aria-label="检索问题" /><button id="retrieve-button" class="outline-button" type="button">运行检索 <span>⌘ ↵</span></button></div>
+            <div class="scope-line"><span class="scope-label">QUERY SCOPE</span><input id="domain-scope" placeholder="domain（可选，例如 software）" /><span class="scope-chip" id="scope-chip">private</span><span class="mono muted" id="retrieval-endpoint">/v1/retrieve</span></div>
+            <div class="result-box" id="retrieval-result"><div class="empty-state"><span class="empty-glyph">⌁</span><div><strong>等待一次有边界的提问</strong><p>检索结果会在这里展开答案、未知项与证据包。</p></div></div></div>
+          </article>
+        </div>
+
+        <aside class="side-column">
+          <div class="section-heading"><div><span class="section-index">03</span><h2>Evidence trail</h2></div></div>
+          <article class="panel trail-panel">
+            <div class="panel-topline"><span class="status-label">LIVE ACTIVITY</span><button class="icon-button" id="clear-events" type="button" title="清空活动">↺</button></div>
+            <div class="event-list" id="event-list"><div class="timeline-empty">还没有活动记录<br /><span>完成一次入库或检索后，这里会出现证据链。</span></div></div>
+          </article>
+          <article class="panel context-panel">
+            <div class="panel-topline"><span class="status-label">WORKSPACE CONTEXT</span><span class="context-live">LOCAL</span></div>
+            <label class="field-group"><span class="field-label">TENANT ID</span><input id="tenant-id" value="demo-ui" /></label>
+            <label class="field-group"><span class="field-label">SECURITY SCOPE</span><input id="security-scope" value="private" /></label>
+            <div class="domain-cloud"><span>software</span><span>medical</span><span>finance</span><span>legal</span><span>education</span><span>astrophysics</span></div>
+            <p class="microcopy">作用域切换会同时影响入库、检索与线程事件。所有请求都带有租户边界。</p>
+          </article>
+        </aside>
+      </section>
+
+      <section class="approval-drawer hidden" id="approval-drawer">
+        <div><span class="eyebrow">HUMAN GATE · INTERRUPT DETECTED</span><h3>这条知识需要独立审批</h3><p id="approval-copy">系统已保留原始证据，确认后才会进入 active knowledge。</p></div>
+        <div class="approval-meta"><span class="mono" id="approval-thread">thread —</span><div><button class="reject-button" id="reject-button" type="button">拒绝</button><button class="approve-button" id="approve-button" type="button">批准并沉淀 <b>↗</b></button></div></div>
+      </section>
+      <footer><span>UNIVERSAL KNOWLEDGE AGENT</span><span>LOCAL PREVIEW · EVIDENCE ALWAYS WINS</span></footer>
+    </main>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

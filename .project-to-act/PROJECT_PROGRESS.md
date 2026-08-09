@@ -13,6 +13,14 @@
 | GitHub 公开仓库发布与手册交付 | 已完成 | Codex | 公开仓库、首个 main 提交、README/用户手册/运维手册可访问 | E-016 | 2026-08-05 |
 | AAWO 真实 LLM 完整回归 | 部分通过 | Codex | 领域/对抗 62/62 通过；生命周期发现线程状态响应契约缺口 | E-017 | 2026-08-09 |
 
+## Frontend preview update (2026-08-09)
+
+- Added a standalone static control-room frontend under `frontend/`.
+- Added a local-only CORS allow-list for the preview origins in `src/uka_langgraph/interfaces/api.py`.
+- Started an isolated real-LLM preview (`glm-5.2`) on `127.0.0.1:8877` and the frontend on `127.0.0.1:8890`.
+- Browser verification passed for health, `accepted -> interrupt -> approve -> active`, scoped retrieval, evidence-pack rendering, and thread event timeline.
+- Detailed evidence and run instructions: `docs/FRONTEND_PREVIEW.md`.
+
 ## 阻塞项
 
 | 阻塞 | 影响 | 解除条件 | 状态 |
