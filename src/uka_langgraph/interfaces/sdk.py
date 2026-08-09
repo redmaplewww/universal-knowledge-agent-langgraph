@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -137,6 +139,48 @@ class UniversalKnowledgeAgent:
                     item.casefold() for item in (*domains, *labels, *aliases)
                 }:
                     continue
+                source_evidence: list[dict[str, Any]] = []
+                evidence_integrity = "verified"
+                for evidence_id in revision.evidence_ids[:12]:
+                    evidence = runtime.services.repository.get_evidence(
+                        security, evidence_id
+                    )
+                    if evidence is None:
+                        evidence_integrity = "missing"
+                        continue
+                    try:
+                        content = runtime.services.objects.read_bytes(evidence.object_ref)
+                    except (FileNotFoundError, OSError, ValueError):
+                        evidence_integrity = "unavailable"
+                        continue
+                    if hashlib.sha256(content).hexdigest() != evidence.content_hash:
+                        evidence_integrity = "hash_mismatch"
+                        continue
+                    source_evidence.append(
+                        {
+                            "evidence_id": evidence.evidence_id,
+                            "parent_evidence_id": evidence.parent_evidence_id,
+                            "content_hash": evidence.content_hash,
+                            "locator": (
+                                asdict(evidence.locator) if evidence.locator else None
+                            ),
+                            "excerpt": re.sub(
+                                r"\s+",
+                                " ",
+                                content.decode("utf-8", errors="replace"),
+                            ).strip()[:500],
+                        }
+                    )
+                learning = revision.payload.get("learning", {})
+                learning = learning if isinstance(learning, dict) else {}
+                evolution_id = str(learning.get("evolution_candidate_id") or "")
+                evolution = (
+                    runtime.services.repository.get_revision(
+                        security, "evolution", evolution_id
+                    )
+                    if evolution_id
+                    else None
+                )
                 entries.append(
                     {
                         "knowledge_id": revision.object_id,
@@ -144,6 +188,26 @@ class UniversalKnowledgeAgent:
                         "status": str(revision.status),
                         "classification": revision.security.classification,
                         "content": str(revision.payload.get("content", "")),
+                        "title": str(revision.payload.get("title", "")),
+                        "context": str(revision.payload.get("context", "")),
+                        "problem": str(revision.payload.get("problem", "")),
+                        "mechanism": str(revision.payload.get("mechanism", "")),
+                        "action": str(revision.payload.get("action", "")),
+                        "outcome": str(revision.payload.get("outcome", "")),
+                        "rationale": str(revision.payload.get("rationale", "")),
+                        "caveats": [
+                            str(item) for item in revision.payload.get("caveats", [])
+                        ],
+                        "logical_relations": list(
+                            revision.payload.get("logical_relations", [])
+                        ),
+                        "source_excerpts": [
+                            str(item)
+                            for item in revision.payload.get("source_excerpts", [])
+                        ],
+                        "experience_schema_version": int(
+                            revision.payload.get("experience_schema_version", 1)
+                        ),
                         "confidence": float(revision.payload.get("confidence", 0.0)),
                         "scope_id": scope_id,
                         "domain_ids": domains,
@@ -163,11 +227,34 @@ class UniversalKnowledgeAgent:
                         "risk": str(scope_payload.get("risk", "normal")),
                         "scope_confidence": float(scope_payload.get("confidence", 0.0)),
                         "review_required": bool(scope_payload.get("review_required", False)),
-                        "provider_revision": scope_payload.get("provider_revision"),
+                        "provider_revision": revision.payload.get(
+                            "provider_revision", scope_payload.get("provider_revision")
+                        ),
                         "source_identifiers": [
                             str(item) for item in revision.payload.get("source_identifiers", [])
                         ],
                         "evidence_ids": list(revision.evidence_ids),
+                        "source_evidence": source_evidence,
+                        "evidence_integrity": evidence_integrity,
+                        "learning": learning,
+                        "evolution": (
+                            {
+                                "evolution_id": evolution.object_id,
+                                "status": str(evolution.status),
+                                "stage": evolution.payload.get("stage"),
+                                "knowledge_delta": evolution.payload.get(
+                                    "knowledge_delta"
+                                ),
+                                "automatic_activation": evolution.payload.get(
+                                    "automatic_activation", False
+                                ),
+                                "required_gates": evolution.payload.get(
+                                    "required_gates", []
+                                ),
+                            }
+                            if evolution is not None
+                            else None
+                        ),
                         "created_at": revision.created_at,
                     }
                 )

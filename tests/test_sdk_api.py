@@ -65,6 +65,7 @@ def test_http_api_contract(settings) -> None:
         params={"tenant_id": "tenant-a", "security_scope_id": "private"},
     )
     assert status.status_code == 200
+    assert status.json()["thread_id"] == thread_id
     events = client.get(
         f"/v1/threads/{thread_id}/events",
         params={"tenant_id": "tenant-a", "security_scope_id": "private"},

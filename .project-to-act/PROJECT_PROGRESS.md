@@ -12,6 +12,7 @@
 | 五领域真实 LLM 诊断与优化审计 | 已完成 | Codex | 5/5 分类、证据、作用域检索和隔离通过；记录无作用域自动路由缺口 | E-015 | 2026-08-05 |
 | GitHub 公开仓库发布与手册交付 | 已完成 | Codex | 公开仓库、首个 main 提交、README/用户手册/运维手册可访问 | E-016 | 2026-08-05 |
 | AAWO 真实 LLM 完整回归 | 部分通过 | Codex | 领域/对抗 62/62 通过；生命周期发现线程状态响应契约缺口 | E-017 | 2026-08-09 |
+| 上下文 Experience、原文对照与受治理自进化 | 已完成 | Codex | F-018 与 A-019/G-006 通过，前端展示真实 4 领域知识 | E-019 | 2026-08-10 |
 
 ## Frontend preview update (2026-08-09)
 
@@ -46,10 +47,15 @@
 3. F-017 已完成；后续变更必须保持 44 项深层完整性回归与 E-014 纠正旅程。
 4. 生产部署仍需独立实现外部存储、IAM、密钥托管、配额/保留/删除策略和容量压测。
 5. GitHub Actions workflow 尚未上传；当前 OAuth Token 缺少 `workflow` scope，如需启用 CI 需由仓库所有者重新授权后单独提交。
-6. 修复或明确 `GET /v1/threads/{thread_id}` 的响应合同：当前 `thread_id` 只在 `values.thread_id`，不在顶层；修复后重跑生命周期 AAWO 回归。
+6. `GET /v1/threads/{thread_id}` 顶层 `thread_id` 已由 F-018 修复并经真实 AAWO 通过；后续可重跑旧
+   E-017 全生命周期矩阵以形成独立替代报告。
 
 ## 进度历史
 
+- 2026-08-10｜完成 `0.2.0` F-018｜从逐 Fragment 理解改为文档级 Experience；存储综合理解、
+  LogicalRelation 与原文对照；active Knowledge 参与后续理解并生成不自动激活的演进候选；首次
+  AAWO 52 条 Ledger 暴露检索断言和顶层 evolution IDs 契约问题，修正后 50 条通过，最终扩展
+  4 领域后 115 条、20/20、完整性错误 0；47/47、Ruff、浏览器一键检索通过｜E-019｜G-006。
 - 2026-08-09｜完成 AAWO 真实 LLM 完整回归｜受管 `glm-5.2` 注入且 `doctor --connect` 为 `ok`；10 个领域、混合输入、提示注入/未知输入、Scope 正负例、跨租户、重复输入共 62/62 通过；EvidenceLedger 310 条完整；生命周期 AAWO 8 个运行通过、2 个预期 HTTP 422 以失败终态观测、1 个真实契约失败：thread status 200 但顶层缺少 `thread_id`；离线 44/44、Ruff、账本校验通过｜E-017｜保留失败，不修改生产源码。
 - 2026-08-05｜创建并推送公开 GitHub 仓库 `redmaplewww/universal-knowledge-agent-langgraph`｜提交 `697f645c6c406b4a1634be394b9ec7dc6b420a75`；远端 `PUBLIC`、默认分支 `main`；上传源码、测试、README、用户手册、运维手册、架构和验收文档；确认未上传 `.env.local`、状态目录、build/dist；GitHub Actions 因 OAuth 缺少 `workflow` scope 暂不上传｜E-016｜用户明确要求推送并公开。
 - 2026-08-05｜完成五领域真实 LLM 诊断与 T4 风险审计｜受管 `glm-5.2` 连通，网络安全/化学/土木工程/环境/心理学 5/5 分类、证据绑定、带领域别名检索和跨租户隔离通过，环境高风险正确 `review_required`；无领域作用域查询虽 5/5 命中目标，但 4/5 混入跨域结果，宏平均结果纯度约 53%，确认自动查询域路由与混合检索为下一优化点；44 项离线测试与 Ruff 通过｜E-015｜未修改生产源码，未新增生产就绪声明。

@@ -2,10 +2,13 @@
 
 ## 当前验收结论
 
-- 结论：`0.1.2` 的 A-001..A-018/G-005 全部通过
-- 验收范围：独立 LangGraph P0、本地完整产品 Gate，以及新增任意领域路由/分类/沉淀能力 Gate
-- 最后检查：2026-08-05
-- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；`GET /v1/threads/{thread_id}` 顶层缺少 `thread_id`（E-017 生命周期断言失败）；GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、向量或图混合检索和领域专家质量认证仍未在本轮验收范围
+- 结论：`0.2.0` 的 A-001..A-019/G-006 全部通过
+- 验收范围：独立 LangGraph P0、本地完整产品 Gate、任意领域路由/分类，以及文档级 Experience、
+  原文逻辑对照和受治理自进化 Gate
+- 最后检查：2026-08-10
+- 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；
+  GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、
+  向量或图混合检索和领域专家质量认证仍未在本轮验收范围
 
 ## 验收标准
 
@@ -29,6 +32,7 @@
 | A-016 | `0.1.0` 全测、构建、洁净安装、安装态真实 LLM smoke 通过 | 通过 | 发布 Gate | E-010 |
 | A-017 | 任意领域知识可用稳定类别路由、逐 Claim 正确绑定 Scope、需复核知识失败关闭并保持源标识可检索 | 通过 | AAWO 真实 HTTP 客户旅程、真实 GLM、多格式混合输入与 SQLite 关联审计 | E-013 |
 | A-018 | 纠正内容重新分类且 stale revision 失败；checkpoint 不可跨 tenant/scope 复用；Evidence 不完整失败关闭；Scope/时效过滤不受 limit 掩盖；冲突、Evolution 评测证据与 Parser 超限均受强制 Gate | 通过 | 隔离失败复现、单元/集成、真实 HTTP/GLM、AAWO 纠正驱动回归、数据库完整性审计 | E-014 |
+| A-019 | 完整文档生成自包含 Experience 并绑定原文逻辑/Locator；Knowledge library 与 EvidencePack 可对照原文；active Knowledge 实际参与后续理解；演进只生成不可自动激活的候选；4 领域与跨租户通过 | 通过 | 47 项离线测试、真实 GLM、AAWO HTTP 20 项检查/115 条 Ledger、SQLite 审计、浏览器 UI/检索验收 | E-019 |
 
 ## 证据索引
 
@@ -53,6 +57,8 @@
 | E-016 | 2026-08-05 | `gh repo create --public`、`git push -u origin main`、`gh repo view`、远端 commit API 核验 | 0 | commit `697f645c6c406b4a1634be394b9ec7dc6b420a75`；仓库 `https://github.com/redmaplewww/universal-knowledge-agent-langgraph` | 仓库为 PUBLIC，默认分支 `main`；62 个源码/测试/文档文件已推送；`.env.local`、状态、build/dist 未纳入；因 OAuth 缺少 `workflow` scope，CI workflow 未上传 | GitHub 远端仓库与本地 `git status` | 后续提交前 |
 | E-017 | 2026-08-09 | `llm-api-config` 注入 `glm`；`doctor --connect`；AAWO `HttpAdapter`/`CustomerSimulationRunner` 真实 HTTP 回归；SQLite 数据库审计；`pytest`/Ruff/账本校验 | 0（领域/对抗 Gate）；1（生命周期 Gate，保留失败） | 领域报告 `CEC6CB5B...88649C1A`；领域 Ledger `6CD29B32...7FF6FF0E`；生命周期报告 `04B192E1...9EAE473C`；生命周期 Ledger `F4E6E04D...1106DB5B`；provider `openai-compatible:glm-5.2` | 62/62 领域与对抗旅程通过；领域 Ledger 310 条、完整性错误 0；生命周期 8 个 AAWO 运行通过，Skill/纠正/stale/Evolution fail-closed/错误合同通过；1 个接口契约失败：线程状态返回 200 但顶层缺少 `thread_id`；离线 44/44、Ruff、project-to-act 校验通过 | `build/aawo-complete-gate-20260809/arbitrary-domain-gate-report.json`、`build/aawo-complete-gate-20260809/evidence/lifecycle-gate-report.json`、对应 SQLite Ledger | 修复 API 响应合同或变更测试合同前 |
 
+| E-019 | 2026-08-10 | F-018 真实上下文 Experience Gate：受管 `glm-5.2`、AAWO HTTP、4 领域、知识复用/演进、SQLite、47 项 pytest、Ruff、Node、浏览器验收与发布包洁净安装 | 0（最终 Gate）；1（首次纠正驱动运行，保留） | 最终报告 `0955737E...05BB437`；首次失败 `3310BE5E...79BD6E91`；中间通过 `A90617CA...258EE2`；wheel `F5E0CEA5...7506F06`；Provider `openai-compatible:glm-5.2` | 最终 20/20、网络安全/财务/机械/教育 4/4、Ledger 115 条且完整性错误 0；单篇 Agent 材料不再产生孤句；原文对照/检索/lineage/evolution candidate fail-closed/跨租户通过；浏览器一键检索 `ANSWERED / 1 EXPERIENCE`、控制台错误 0；0.2.0 wheel/sdist 构建、洁净 Python 3.11 安装及 49 个依赖一致性通过 | `docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`、`build/contextual-experience-gate-20260810d/evidence/`、`dist/universal_knowledge_agent_langgraph-0.2.0-py3-none-any.whl` | Provider/Experience 合同/检索/演进或前端变更前 |
+
 ## Gate 记录
 
 | Gate ID | 日期 | Gate | 对象 | 结果 | 证据 ID | 豁免与确认人 |
@@ -62,9 +68,13 @@
 | G-003 | 2026-08-03 | 任意领域路由、分类与沉淀可靠性 Gate | `0.1.0` | 失败 | E-012 | 无；不得以 27 项既有回归或单领域语义正确豁免 |
 | G-004 | 2026-08-04 | G-003 纠正回归 Gate | `0.1.1` | 通过 | E-013 | 无；保留 G-003 原失败事实，不把代表性领域 Gate 解释为所有知识的数学穷举或专家认证 |
 | G-005 | 2026-08-04 | 深层完整性与隔离修复 Gate | `0.1.2` | 通过 | E-014 | 无；保留两次真实 Gate 失败记录，且不豁免生产 IAM/容量/专家认证 |
+| G-006 | 2026-08-10 | 上下文 Experience、原文逻辑与受治理自进化 Gate | `0.2.0` | 通过 | E-019 | 无；保留首次 AAWO 失败，不把 4 领域代表性 Gate 宣称为任意领域数学穷举或专家认证 |
 
 ## 验收记录
 
+- 2026-08-10｜上下文 Experience 与自进化纠正回归｜E-019｜首次 AAWO 运行保留
+  `review_required` 断言误配和顶层 `evolution_ids` 契约失败；修正后扩展至 4 领域，最终 20/20、
+  Ledger 115 条、完整性错误 0，47/47 与浏览器验收通过｜A-019/G-006 通过。
 - 2026-08-09｜AAWO 真实 LLM 完整回归｜E-017｜领域/对抗客户旅程 62/62 通过；生命周期检查保留 1 个线程状态响应契约失败，2 个 HTTP 422 是预期安全拒绝的失败终态；未将失败改写为通过，A-001..A-018/G-005 状态不变，待修复后重跑生命周期 Gate。
 
 ## Frontend preview acceptance (E-018)

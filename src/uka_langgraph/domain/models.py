@@ -55,6 +55,13 @@ class Evidence:
 
 
 @dataclass(frozen=True, slots=True)
+class LogicalRelation:
+    source: str
+    relation: str
+    target: str
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimCandidate:
     candidate_id: str
     content: str
@@ -63,6 +70,19 @@ class ClaimCandidate:
     provider_revision: str
     kind: str = "claim"
     unknowns: tuple[str, ...] = ()
+    title: str = ""
+    context: str = ""
+    problem: str = ""
+    mechanism: str = ""
+    action: str = ""
+    outcome: str = ""
+    rationale: str = ""
+    caveats: tuple[str, ...] = ()
+    source_excerpts: tuple[str, ...] = ()
+    logical_relations: tuple[LogicalRelation, ...] = ()
+    derived_from_knowledge_ids: tuple[str, ...] = ()
+    knowledge_delta: str = "new"
+    schema_version: int = 1
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
@@ -166,6 +186,7 @@ class EvidencePackItem:
     scope: dict[str, Any]
     evidence: tuple[dict[str, Any], ...]
     confidence: float
+    experience: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

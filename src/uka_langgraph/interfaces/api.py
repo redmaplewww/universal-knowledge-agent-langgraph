@@ -69,7 +69,7 @@ def create_app(
     agent = UniversalKnowledgeAgent(settings, project_root=project_root)
     app = FastAPI(
         title="Universal Knowledge Agent",
-        version="0.1.2",
+        version="0.2.0",
         description="Evidence-first local LangGraph knowledge agent API",
     )
     app.add_middleware(

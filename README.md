@@ -1,11 +1,11 @@
 # Universal Knowledge Agent — LangGraph
 
-独立的 Evidence-first、Scope-first 知识 Agent。它把任意领域的文本知识持久化为可追溯
-Evidence、Claim、Scope 和版本化 Knowledge，并通过 LangGraph 编排摄取、检索、纠正、Skill
-和 Evolution 生命周期。
+独立的 Evidence-first、Scope-first 知识 Agent。它先按原始文档理解上下文和逻辑关系，再把
+模型的综合理解沉淀为可追溯 Experience、Scope 和版本化 Knowledge，并通过 LangGraph 编排
+摄取、检索、纠正、Skill 和受治理 Evolution 生命周期。
 
 仓库名：`universal-knowledge-agent-langgraph`  
-当前版本：`0.1.2`  
+当前版本：`0.2.0`
 运行时：Python 3.11+、LangGraph 1.2.10、SQLite、FastAPI
 
 > 本项目是独立实现，不导入、不依赖同级旧 `universal-knowledge-agent` 或 AAWO 运行时。
@@ -14,13 +14,17 @@ Evidence、Claim、Scope 和版本化 Knowledge，并通过 LangGraph 编排摄�
 ## 你可以用它做什么
 
 - 将 TXT、Markdown、JSON、CSV、HTML 保存为内容寻址 Evidence，并生成精确 Locator。
-- 用受管 OpenAI-compatible LLM 识别 Claim、适用 Scope、风险、置信度和待确认项。
+- 用受管 OpenAI-compatible LLM 在文档级生成自包含 Experience：标题、背景、问题、机制、
+  行动、结果、理解依据、适用边界、原文摘录和显式逻辑关系。
+- Fragment 只承担精确 Evidence Locator，不再被逐句机械编译为脱离上下文的知识。
 - 在高风险、低置信度、冲突或 Scope 不完整时进入人工审批，不直接生成确定答案。
 - 按 tenant、security scope、active revision、领域、任务、主体、地域和时效过滤检索结果。
-- 通过 EvidencePack 返回 Knowledge、Scope、Evidence hash、父 Evidence 和 Locator。
+- 通过 EvidencePack 返回综合 Experience、Scope、原文摘录、Evidence hash、父 Evidence 和 Locator。
 - 以 `interrupt()`/`resume` 实现跨进程审批恢复，以 Receipt 保证重试不重复副作用。
 - 对知识纠正执行 expected-revision CAS，生成 ImpactSet 和 RegressionCase。
 - 编译受限的 advisory Skill，并对 Evolution 执行 offline → shadow → canary → 人工审批。
+- 新材料会检索相关 active knowledge 作为受限理解上下文；强化、修正或矛盾只生成带谱系的
+  Evolution candidate，永不未经 Gate 自动替换旧策略。
 - 通过 CLI、Python SDK 和本地 FastAPI HTTP API 使用。
 
 ## 快速开始
@@ -140,6 +144,7 @@ OpenAPI/Swagger：`http://127.0.0.1:8765/docs`
 | `GET` | `/health` | 非秘密配置和可选 Provider 健康检查 |
 | `POST` | `/v1/ingest` | 摄取文本并可能返回审批中断 |
 | `POST` | `/v1/retrieve` | 受 tenant/scope/Scope 过滤的 EvidencePack 检索 |
+| `GET` | `/v1/knowledge` | 展示 active Experience、原文对照、逻辑关系和演进谱系 |
 | `POST` | `/v1/corrections` | 创建纠正版本 |
 | `POST` | `/v1/skills` | 创建 advisory Skill |
 | `POST` | `/v1/evolution` | 创建 Evolution 提案 |
@@ -156,7 +161,7 @@ interfaces -> orchestration -> application -> domain
              infrastructure --------+
 ```
 
-- `domain`：只使用 Python 标准库，定义 Evidence、Claim、Scope、Revision 和 EvidencePack。
+- `domain`：只使用 Python 标准库，定义 Evidence、Experience candidate、LogicalRelation、Scope、Revision 和 EvidencePack。
 - `application`：依赖 Parser、Provider、Repository、Object Store 端口；副作用携带
   `operation_id` 并写入 Receipt。
 - `infrastructure`：Parser Registry、内容寻址对象库、SQLite Registry/FTS/Event Ledger、
@@ -184,9 +189,10 @@ uv run python -m compileall -q src
 uv build
 ```
 
-本地验收已覆盖 44 项离线测试、真实 GLM HTTP 旅程、五领域分类与 Evidence 关联、
-跨租户负例、审批恢复、纠正 CAS、冲突、Evolution 和 Parser 限制。最新五领域证据见
-[测试报告](build/five-domain-gate-20260805/evidence/five-domain-gate-report.json)。
+本地验收已覆盖 47 项离线测试；真实 `glm-5.2` 的 AAWO HTTP Gate 产生 115 条完整 Ledger
+记录，验证了上下文综合、原文逻辑、原文对照、检索、知识复用、Evolution 不自动激活、
+跨租户隔离，以及网络安全、财务、机械工程、教育 4 个领域。结果见
+[上下文经验与自进化报告](docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md)。
 
 ## 文档导航
 
@@ -196,10 +202,11 @@ uv build
 - [LLM 配置与测试](docs/LLM_CONFIGURATION_AND_TESTING.md)：受管模型配置与真实测试方法。
 - [任意领域修复报告](docs/ARBITRARY_DOMAIN_ROUTING_FIX_REPORT_2026-08-04.md)。
 - [深层完整性修复报告](docs/DEEP_INTEGRITY_FIX_REPORT_2026-08-04.md)。
+- [上下文经验与自进化报告](docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md)。
 
 ## 版本与授权说明
 
-当前版本是 `0.1.2`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
+当前版本是 `0.2.0`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
 但当前没有授予开源再分发、商用或修改授权。若需要以 MIT、Apache-2.0 或其他许可证公开，
 请先明确授权后再补充 LICENSE 文件。
 

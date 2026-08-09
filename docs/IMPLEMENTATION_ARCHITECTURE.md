@@ -1,4 +1,4 @@
-# `0.1.2` 实现架构
+# `0.2.0` 实现架构
 
 ```text
 interfaces -> orchestration -> application -> domain
@@ -7,7 +7,8 @@ interfaces -> orchestration -> application -> domain
             infrastructure --------+
 ```
 
-- `domain` 只使用 Python 标准库，定义 Evidence、Claim、Scope、revision 和 EvidencePack。
+- `domain` 只使用 Python 标准库，定义 Evidence、Experience candidate、LogicalRelation、
+  Scope、revision 和 EvidencePack。
 - `application` 只面向 Parser、Provider、Repository、Object Store 端口；副作用携带稳定
   `operation_id` 并生成 Receipt。
 - `infrastructure` 提供 Parser Registry、内容寻址对象库、SQLite Registry/FTS/Event
@@ -20,18 +21,25 @@ interfaces -> orchestration -> application -> domain
 ```text
 stage -> preflight -> preserve original Evidence
       -> detect/parse -> derived Fragment Evidence + Locator
-      -> Send understand fan-out -> Scope/evaluate
-      -> interrupt approval -> active Registry + FTS projection
+      -> regroup by parent Evidence -> document-level understanding
+      -> Experience + LogicalRelation + Scope/evaluate
+      -> interrupt approval -> active Registry + expanded FTS projection
 ```
 
-支持 plain text、Markdown、JSON、CSV 和 HTML。未知二进制、任一 Provider 合同失败、低
-置信、高风险或 Scope 不完整都会失败关闭；并发分支只写带 reducer 的 ID/warning/error。
+支持 plain text、Markdown、JSON、CSV 和 HTML。解析分片不会触发逐片模型理解；服务层按
+`parent_evidence_id` 还原原始文档，一次性向 Provider 提供全文。Provider 返回自包含经验、
+原文摘录与 `causes/condition/sequence/contrast/exception/supports/enables` 关系，服务层再把
+摘录匹配回精确 Fragment。匹配失败时保守绑定整组 Evidence，不伪造句级精度。
+
+未知二进制、任一 Provider 合同失败、低置信、高风险、Experience 缺少上下文/依据/原文摘录
+或 Scope 不完整都会失败关闭；并发分支只写带 reducer 的 ID/warning/error。
 
 ## 检索与回答
 
 检索在一个受控查询中绑定 tenant、security scope、active revision 和 FTS，再由应用层过滤
-Scope、valid_from/valid_until、风险与开放冲突。输出 EvidencePack，包含 knowledge revision、
-Scope、Evidence hash、父 Evidence 和精确 Locator。冲突或高风险结果返回
+Scope、valid_from/valid_until、风险与开放冲突。FTS 投影覆盖标题、综合内容、背景、问题、
+机制、行动、结果、依据、注意项、原文摘录和来源编号。输出 EvidencePack，包含 Experience、
+Scope、原文 excerpt、Evidence hash、父 Evidence 和精确 Locator。冲突或高风险结果返回
 `review_required`/`unknown`，不会拼成确定答案。
 
 ## 纠正、Skill 与进化
@@ -40,7 +48,11 @@ Scope、Evidence hash、父 Evidence 和精确 Locator。冲突或高风险结�
   revision，审批后只移动 active Registry 指针。
 - Skill 编译真实 `SKILL.md` 与 manifest 内容寻址制品，默认权限为空、网络拒绝，只执行无
   副作用静态/advisory sandbox 检查，审批后激活。
-- Evolution 依次经过 offline、shadow、canary 和人工审批；安全指标回退立即拒绝。
+- 每次文档理解前先检索同 tenant/scope 的相关 active Knowledge，并把最小 Experience 视图作为
+  fallible prior knowledge 注入 Provider。显式来源编号还会形成确定性 lineage。
+- `reinforces/refines/contradicts` 会创建不可自动激活的 Evolution candidate，记录 baseline
+  knowledge IDs 和 candidate knowledge ID；正式 Evolution 仍依次经过 offline、shadow、
+  canary 和人工审批，安全指标回退立即拒绝。
 
 ## 持久化与恢复
 

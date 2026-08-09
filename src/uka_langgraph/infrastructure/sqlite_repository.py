@@ -126,16 +126,10 @@ class SQLiteRepository:
                 "(tenant_id, security_scope_id, thread_id, created_at)"
             )
             connection.execute("DELETE FROM knowledge_fts")
-            connection.execute(
+            active_rows = connection.execute(
                 """
-                INSERT INTO knowledge_fts
-                    (tenant_id, security_scope_id, object_id, revision, content)
                 SELECT r.tenant_id, r.security_scope_id, r.object_id, r.revision,
-                       json_extract(r.payload_json, '$.content') || ' ' ||
-                       COALESCE(json_extract(r.payload_json, '$.source_identifiers'), '') || ' ' ||
-                       COALESCE(json_extract(r.payload_json, '$.domain_ids'), '') || ' ' ||
-                       COALESCE(json_extract(r.payload_json, '$.domain_labels'), '') || ' ' ||
-                       COALESCE(json_extract(r.payload_json, '$.domain_aliases'), '')
+                       r.payload_json
                 FROM active_registry a
                 JOIN revisions r
                   ON r.tenant_id = a.tenant_id
@@ -145,6 +139,23 @@ class SQLiteRepository:
                  AND r.revision = a.revision
                 WHERE a.object_type = 'knowledge'
                 """
+            ).fetchall()
+            connection.executemany(
+                """
+                INSERT INTO knowledge_fts
+                    (tenant_id, security_scope_id, object_id, revision, content)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        row["tenant_id"],
+                        row["security_scope_id"],
+                        row["object_id"],
+                        row["revision"],
+                        _fts_document(json.loads(row["payload_json"])),
+                    )
+                    for row in active_rows
+                ],
             )
 
     def get_receipt(self, operation_id: str) -> OperationReceipt | None:
@@ -603,11 +614,31 @@ def _json(value: Any) -> str:
 
 
 def _fts_document(payload: dict[str, Any]) -> str:
-    values: list[str] = [str(payload.get("content", ""))]
-    for key in ("source_identifiers", "domain_ids", "domain_labels", "domain_aliases"):
+    values: list[str] = []
+    for key in (
+        "title",
+        "content",
+        "context",
+        "problem",
+        "mechanism",
+        "action",
+        "outcome",
+        "rationale",
+        "caveats",
+        "source_excerpts",
+        "source_identifiers",
+        "domain_ids",
+        "domain_labels",
+        "domain_aliases",
+    ):
         raw = payload.get(key, [])
         if isinstance(raw, (list, tuple, set)):
-            values.extend(str(item) for item in raw)
+            values.extend(
+                json.dumps(item, ensure_ascii=False, sort_keys=True)
+                if isinstance(item, dict)
+                else str(item)
+                for item in raw
+            )
         elif raw:
             values.append(str(raw))
     return " ".join(value for value in values if value)

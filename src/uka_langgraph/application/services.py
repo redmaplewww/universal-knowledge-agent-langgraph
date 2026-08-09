@@ -189,20 +189,40 @@ class IngestionService:
             )
             return cached.result
 
-        candidate_ids: list[str] = []
-        scope_ids: list[str] = []
-        warnings: list[str] = []
+        grouped: dict[str, list[Evidence]] = {}
         for evidence_id in evidence_ids:
             evidence = self.repository.get_evidence(security, evidence_id)
             if evidence is None:
                 raise LookupError(f"evidence not found in security scope: {evidence_id}")
-            if not evidence.media_type.startswith("text/"):
-                warnings.append(f"unsupported_media:{evidence.media_type}")
-                continue
-            text = self.objects.read_bytes(evidence.object_ref).decode("utf-8")
-            result = self.understanding.understand(text, evidence_id)
+            grouped.setdefault(evidence.parent_evidence_id or evidence.evidence_id, []).append(
+                evidence
+            )
+
+        candidate_ids: list[str] = []
+        scope_ids: list[str] = []
+        warnings: list[str] = []
+        for document_evidence_id, fragments in grouped.items():
+            document = self.repository.get_evidence(security, document_evidence_id)
+            if document is not None:
+                try:
+                    text = self.objects.read_bytes(document.object_ref).decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    text = "\n".join(
+                        self.objects.read_bytes(fragment.object_ref).decode("utf-8")
+                        for fragment in fragments
+                    )
+            else:
+                text = "\n".join(
+                    self.objects.read_bytes(fragment.object_ref).decode("utf-8")
+                    for fragment in fragments
+                )
+            prior_knowledge = self._related_knowledge(security, text)
+            result = self._understand_document(
+                text, document_evidence_id, tuple(prior_knowledge)
+            )
             warnings.extend(result.warnings)
-            fragment_scope_ids: list[str] = []
+            document_scope_ids: list[str] = []
+            fragment_ids = tuple(fragment.evidence_id for fragment in fragments)
             for scope in result.scopes:
                 canonical_domains = scope.domain_ids or canonicalize_domains(scope.domain)
                 labels = scope.domain_labels or scope.domain
@@ -230,7 +250,7 @@ class IngestionService:
                         "review_required": scope.review_required,
                         "provider_revision": self.understanding.revision,
                     },
-                    evidence_ids=(evidence_id,),
+                    evidence_ids=fragment_ids,
                     created_at=utc_now(),
                 )
                 self.repository.put_revision(
@@ -238,9 +258,46 @@ class IngestionService:
                     scoped_operation_id(security, request_id, "scope", scope.scope_id),
                 )
                 scope_ids.append(scope.scope_id)
-                fragment_scope_ids.append(scope.scope_id)
-            source_identifiers = _extract_source_identifiers(text)
+                document_scope_ids.append(scope.scope_id)
             for claim in result.claims:
+                claim_evidence_ids = _match_claim_evidence(
+                    claim.content,
+                    claim.source_excerpts,
+                    fragments,
+                    self.objects,
+                )
+                matched_source_text = " ".join(
+                    self.objects.read_bytes(fragment.object_ref).decode("utf-8")
+                    for fragment in fragments
+                    if fragment.evidence_id in claim_evidence_ids
+                )
+                source_text = " ".join(
+                    value
+                    for value in (" ".join(claim.source_excerpts), matched_source_text)
+                    if value
+                )
+                source_identifiers = _extract_source_identifiers(source_text)
+                derived_ids = tuple(
+                    knowledge_id
+                    for knowledge_id in claim.derived_from_knowledge_ids
+                    if any(
+                        str(item.get("knowledge_id")) == knowledge_id
+                        for item in prior_knowledge
+                    )
+                )
+                if not derived_ids and source_identifiers:
+                    current_identifiers = set(source_identifiers)
+                    derived_ids = tuple(
+                        str(item["knowledge_id"])
+                        for item in prior_knowledge
+                        if current_identifiers.intersection(
+                            str(value)
+                            for value in item.get("source_identifiers", [])
+                        )
+                    )
+                knowledge_delta = claim.knowledge_delta
+                if derived_ids and knowledge_delta == "new":
+                    knowledge_delta = "refines"
                 revision = DomainRevision(
                     object_type="candidate",
                     object_id=claim.candidate_id,
@@ -253,10 +310,25 @@ class IngestionService:
                         "confidence": claim.confidence,
                         "provider_revision": claim.provider_revision,
                         "unknowns": list(claim.unknowns),
-                        "scope_ids": sorted(set(fragment_scope_ids)),
+                        "scope_ids": sorted(set(document_scope_ids)),
                         "source_identifiers": list(source_identifiers),
+                        "experience_schema_version": claim.schema_version,
+                        "title": claim.title,
+                        "context": claim.context,
+                        "problem": claim.problem,
+                        "mechanism": claim.mechanism,
+                        "action": claim.action,
+                        "outcome": claim.outcome,
+                        "rationale": claim.rationale,
+                        "caveats": list(claim.caveats),
+                        "source_excerpts": list(claim.source_excerpts),
+                        "logical_relations": [
+                            asdict(relation) for relation in claim.logical_relations
+                        ],
+                        "derived_from_knowledge_ids": list(derived_ids),
+                        "knowledge_delta": knowledge_delta,
                     },
-                    evidence_ids=claim.evidence_ids,
+                    evidence_ids=claim_evidence_ids,
                     created_at=utc_now(),
                 )
                 self.repository.put_revision(
@@ -284,6 +356,43 @@ class IngestionService:
             OperationReceipt(op_id, "understand", "committed", result_payload, utc_now())
         )
         return result_payload
+
+    def _related_knowledge(
+        self, security: SecurityScope, text: str
+    ) -> list[dict[str, Any]]:
+        related = self.repository.search_active_knowledge(security, text[:8_000], 8)
+        return [
+            {
+                "knowledge_id": revision.object_id,
+                "revision": revision.revision,
+                "title": revision.payload.get("title", ""),
+                "content": revision.payload.get("content", ""),
+                "context": revision.payload.get("context", ""),
+                "rationale": revision.payload.get("rationale", ""),
+                "caveats": revision.payload.get("caveats", []),
+                "source_identifiers": revision.payload.get(
+                    "source_identifiers", []
+                ),
+            }
+            for revision in related
+        ]
+
+    def _understand_document(
+        self,
+        text: str,
+        evidence_id: str,
+        prior_knowledge: tuple[dict[str, Any], ...],
+    ):
+        try:
+            return self.understanding.understand(
+                text, evidence_id, prior_knowledge=prior_knowledge
+            )
+        except TypeError as exc:
+            # Keep third-party v1 providers usable while the public provider contract
+            # migrates to retrieval-augmented document understanding.
+            if "prior_knowledge" not in str(exc):
+                raise
+            return self.understanding.understand(text, evidence_id)
 
     def evaluate(
         self,
@@ -316,6 +425,18 @@ class IngestionService:
             for candidate in candidates
         ):
             return {"decision": "review", "reason": "low_confidence"}
+        if any(
+            candidate is not None
+            and int(candidate.payload.get("experience_schema_version", 1)) >= 2
+            and (
+                not str(candidate.payload.get("title", "")).strip()
+                or not str(candidate.payload.get("context", "")).strip()
+                or not str(candidate.payload.get("rationale", "")).strip()
+                or not candidate.payload.get("source_excerpts")
+            )
+            for candidate in candidates
+        ):
+            return {"decision": "review", "reason": "experience_context_incomplete"}
         return {"decision": "review", "reason": "independent_approval_required"}
 
     def compile_knowledge(
@@ -334,6 +455,7 @@ class IngestionService:
             return receipt.result
 
         knowledge_ids: list[str] = []
+        evolution_ids: list[str] = []
         status = KnowledgeStatus.ACTIVE if approved else KnowledgeStatus.EVALUATED
         scopes = [
             self.repository.get_revision(security, "scope", scope_id) for scope_id in scope_ids
@@ -353,6 +475,30 @@ class IngestionService:
             knowledge_op_id = scoped_operation_id(
                 security, request_id, "knowledge", candidate_id
             )
+            derived_from = [
+                str(knowledge_id)
+                for knowledge_id in candidate.payload.get(
+                    "derived_from_knowledge_ids", []
+                )
+                if self.repository.get_active_revision(
+                    security, "knowledge", str(knowledge_id)
+                )
+                is not None
+            ]
+            knowledge_delta = str(candidate.payload.get("knowledge_delta", "new"))
+            evolution_id = (
+                stable_id(
+                    "evo",
+                    security.tenant_id,
+                    security.security_scope_id,
+                    knowledge_id,
+                    knowledge_delta,
+                    *sorted(derived_from),
+                )
+                if derived_from
+                and knowledge_delta in {"reinforces", "refines", "contradicts"}
+                else ""
+            )
             existing = self.repository.get_revision_by_operation(knowledge_op_id)
             if existing is None:
                 revision = DomainRevision(
@@ -362,13 +508,17 @@ class IngestionService:
                     status=status,
                     security=security,
                     payload={
-                        "content": candidate.payload["content"],
-                        "confidence": candidate.payload["confidence"],
+                        **_experience_payload(candidate.payload),
                         "scope_id": scope_id,
                         "candidate_id": candidate_id,
-                        "source_identifiers": list(
-                            candidate.payload.get("source_identifiers", [])
-                        ),
+                        "learning": {
+                            "mode": "retrieval_augmented_synthesis",
+                            "knowledge_delta": knowledge_delta,
+                            "derived_from_knowledge_ids": derived_from,
+                            "automatic_activation": False,
+                            "governance": "human_approval",
+                            "evolution_candidate_id": evolution_id or None,
+                        },
                     },
                     evidence_ids=candidate.evidence_ids,
                     created_at=utc_now(),
@@ -378,10 +528,37 @@ class IngestionService:
                 revision = existing
             if approved:
                 self.repository.activate_revision(revision)
+            if evolution_id:
+                evolution = DomainRevision(
+                    object_type="evolution",
+                    object_id=evolution_id,
+                    revision=1,
+                    status=KnowledgeStatus.CANDIDATE,
+                    security=security,
+                    payload={
+                        "target_type": "knowledge_synthesis",
+                        "baseline_knowledge_ids": sorted(set(derived_from)),
+                        "candidate_knowledge_id": knowledge_id,
+                        "knowledge_delta": knowledge_delta,
+                        "stage": "proposal",
+                        "required_gates": ["offline", "shadow", "canary", "human"],
+                        "automatic_activation": False,
+                    },
+                    evidence_ids=candidate.evidence_ids,
+                    created_at=utc_now(),
+                )
+                self.repository.put_revision(
+                    evolution,
+                    scoped_operation_id(
+                        security, request_id, "knowledge_evolution", evolution_id
+                    ),
+                )
+                evolution_ids.append(evolution_id)
             knowledge_ids.append(knowledge_id)
 
         result = {
             "knowledge_ids": sorted(set(knowledge_ids)),
+            "evolution_ids": sorted(set(evolution_ids)),
             "status": status.value,
             "receipt_ids": [op_id],
         }
@@ -549,6 +726,7 @@ class CorrectionService:
             )
         )
         candidate_values = [candidate for candidate in candidates if candidate is not None]
+        experience_payload = _merge_candidate_experiences(candidate_values)
         next_revision = self.repository.next_revision(security, "knowledge", target_id)
         impact_id = stable_id("impact", correction_id, target_id, str(next_revision))
         impact = DomainRevision(
@@ -580,21 +758,17 @@ class CorrectionService:
             status=KnowledgeStatus.CANDIDATE,
             security=security,
             payload={
-                "content": replacement,
-                "confidence": min(
-                    float(candidate.payload["confidence"])
-                    for candidate in candidate_values
-                ),
+                **experience_payload,
                 "scope_id": scope_id,
                 "candidate_ids": [candidate.object_id for candidate in candidate_values],
-                "source_identifiers": sorted(
-                    {
-                        str(identifier)
-                        for candidate in candidate_values
-                        for identifier in candidate.payload.get("source_identifiers", [])
-                    }
-                ),
                 "correction_id": correction_id,
+                "learning": {
+                    "mode": "correction_driven_revision",
+                    "knowledge_delta": "refines",
+                    "derived_from_knowledge_ids": [target_id],
+                    "automatic_activation": False,
+                    "governance": "human_approval" if review_required else "validated_correction",
+                },
             },
             evidence_ids=tuple(
                 sorted(
@@ -622,6 +796,9 @@ class CorrectionService:
                     str(target.payload.get("content", "")).encode("utf-8")
                 ).hexdigest(),
                 "after_hash": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+                "synthesis_hash": hashlib.sha256(
+                    str(experience_payload.get("content", "")).encode("utf-8")
+                ).hexdigest(),
                 "checks": ["non_empty", "revision_monotonic", "evidence_preserved"],
                 "passed": True,
                 "scope_id": scope_id,
@@ -977,6 +1154,11 @@ class RetrievalService:
                         "content_hash": evidence.content_hash,
                         "parent_evidence_id": evidence.parent_evidence_id,
                         "locator": asdict(evidence.locator) if evidence.locator else None,
+                        "excerpt": re.sub(
+                            r"\s+",
+                            " ",
+                            evidence_bytes.decode("utf-8", errors="replace"),
+                        ).strip()[:500],
                     }
                 )
             items.append(
@@ -987,6 +1169,7 @@ class RetrievalService:
                     scope=scope,
                     evidence=tuple(evidence_payloads),
                     confidence=float(revision.payload.get("confidence", 0.0)),
+                    experience=_experience_view(revision.payload),
                 )
             )
         if not items:
@@ -1209,6 +1392,155 @@ def _extract_source_identifiers(text: str) -> tuple[str, ...]:
     for pattern in patterns:
         identifiers.extend(re.findall(pattern, text))
     return tuple(dict.fromkeys(identifiers))[:64]
+
+
+def _match_claim_evidence(
+    content: str,
+    source_excerpts: tuple[str, ...],
+    fragments: list[Evidence],
+    objects: ObjectStorePort,
+) -> tuple[str, ...]:
+    needles = [
+        re.sub(r"\s+", " ", value).strip().casefold()
+        for value in (*source_excerpts, content)
+        if value.strip()
+    ]
+    matched: list[str] = []
+    for fragment in fragments:
+        fragment_text = re.sub(
+            r"\s+",
+            " ",
+            objects.read_bytes(fragment.object_ref).decode("utf-8"),
+        ).strip().casefold()
+        if any(
+            fragment_text == needle
+            or (len(fragment_text) >= 8 and fragment_text in needle)
+            or (len(needle) >= 8 and needle in fragment_text)
+            for needle in needles
+        ):
+            matched.append(fragment.evidence_id)
+    # An unsupported model-to-locator alignment must remain broad rather than
+    # pretending to have sentence-level precision.
+    return tuple(sorted(set(matched or [fragment.evidence_id for fragment in fragments])))
+
+
+def _experience_payload(candidate_payload: dict[str, Any]) -> dict[str, Any]:
+    fields = (
+        "kind",
+        "content",
+        "confidence",
+        "provider_revision",
+        "experience_schema_version",
+        "title",
+        "context",
+        "problem",
+        "mechanism",
+        "action",
+        "outcome",
+        "rationale",
+        "caveats",
+        "source_excerpts",
+        "logical_relations",
+        "source_identifiers",
+        "derived_from_knowledge_ids",
+        "knowledge_delta",
+        "unknowns",
+    )
+    return {key: candidate_payload.get(key) for key in fields}
+
+
+def _experience_view(payload: dict[str, Any]) -> dict[str, Any]:
+    fields = (
+        "experience_schema_version",
+        "title",
+        "context",
+        "problem",
+        "mechanism",
+        "action",
+        "outcome",
+        "rationale",
+        "caveats",
+        "source_excerpts",
+        "logical_relations",
+        "source_identifiers",
+        "learning",
+    )
+    return {key: payload.get(key) for key in fields}
+
+
+def _merge_candidate_experiences(
+    candidates: list[DomainRevision],
+) -> dict[str, Any]:
+    def joined(field: str) -> str:
+        values = [
+            str(candidate.payload.get(field, "")).strip()
+            for candidate in candidates
+            if str(candidate.payload.get(field, "")).strip()
+        ]
+        return " ".join(dict.fromkeys(values))
+
+    def collected(field: str) -> list[Any]:
+        values: list[Any] = []
+        for candidate in candidates:
+            raw = candidate.payload.get(field, [])
+            if isinstance(raw, list):
+                values.extend(raw)
+        return list(dict.fromkeys(json.dumps(item, ensure_ascii=False, sort_keys=True) for item in values))
+
+    contents = [
+        str(candidate.payload.get("content", "")).strip()
+        for candidate in candidates
+        if str(candidate.payload.get("content", "")).strip()
+    ]
+    relations = [
+        json.loads(value) for value in collected("logical_relations")
+    ]
+    for left, right in zip(contents, contents[1:], strict=False):
+        relations.append({"source": left, "relation": "sequence", "target": right})
+    deltas = {
+        str(candidate.payload.get("knowledge_delta", "new")) for candidate in candidates
+    }
+    delta = next(
+        (value for value in ("contradicts", "refines", "reinforces") if value in deltas),
+        "new",
+    )
+    return {
+        "kind": "experience",
+        "content": " ".join(contents),
+        "confidence": min(
+            (float(candidate.payload.get("confidence", 0.0)) for candidate in candidates),
+            default=0.0,
+        ),
+        "provider_revision": joined("provider_revision"),
+        "experience_schema_version": max(
+            (
+                int(candidate.payload.get("experience_schema_version", 1))
+                for candidate in candidates
+            ),
+            default=1,
+        ),
+        "title": joined("title")[:200],
+        "context": joined("context"),
+        "problem": joined("problem"),
+        "mechanism": joined("mechanism"),
+        "action": joined("action"),
+        "outcome": joined("outcome"),
+        "rationale": joined("rationale"),
+        "caveats": [json.loads(value) for value in collected("caveats")],
+        "source_excerpts": [
+            json.loads(value) for value in collected("source_excerpts")
+        ],
+        "logical_relations": relations,
+        "source_identifiers": [
+            json.loads(value) for value in collected("source_identifiers")
+        ],
+        "derived_from_knowledge_ids": [
+            json.loads(value)
+            for value in collected("derived_from_knowledge_ids")
+        ],
+        "knowledge_delta": delta,
+        "unknowns": [json.loads(value) for value in collected("unknowns")],
+    }
 
 
 @dataclass(slots=True)

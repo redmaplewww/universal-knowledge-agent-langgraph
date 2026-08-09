@@ -29,9 +29,13 @@
 | F-015 | `0.1.0` 发布与安装态 Gate | Release | 已完成 | F-009..F-014 | 离线全测、真实 LLM、wheel、洁净安装和安装态 E2E 全通过 | E-010 |
 | F-016 | 任意领域分类与路由可靠性 | P0 | 已完成 | F-009..F-015 | 受控 domain ID/alias；Claim–Scope 按 Evidence 显式绑定；混合文档逐 Claim 分类；`review_required` 检索失败关闭；源标识可检索；A-017/G-004 通过 | E-013 |
 | F-017 | 深层完整性、线程隔离与治理 Gate | P0/P1 | 已完成 | F-005,F-010,F-013,F-016 | 纠正重新分类并执行 active revision CAS；checkpoint tenant/scope namespace；Evidence 缺失失败关闭；Scope/时效过滤后 limit；冲突生产；Evolution 绑定评测证据；Parser 超限不静默丢失；A-018/G-005 通过 | E-014 |
+| F-018 | 文档级 Experience、原文逻辑对照与知识驱动演进 | P0 | 已完成 | F-009..F-017 | 按父 Evidence 整体理解；Experience v2 与 LogicalRelation 入库；Knowledge library/EvidencePack 展示原文对照；active Knowledge 注入后续理解；refines/reinforces/contradicts 只生成受治理候选；A-019/G-006 通过 | E-019 |
 
 ## 功能变更历史
 
+- 2026-08-10｜F-018｜新增并完成｜47 项离线回归、真实 GLM、AAWO 115 条 Ledger、上下文/逻辑/
+  原文/检索/演进 20/20 检查、网络安全/财务/机械/教育 4/4、浏览器 UI 与一键检索通过｜E-019｜
+  A-019/G-006 通过；保留首次 AAWO 两项失败并记录纠正。
 - 2026-08-04｜F-017｜状态更新为已完成｜44 项离线回归、真实 GLM/HTTP 主旅程 62/62、alias 10/10、结构化 6/6、编号检索 6/6、真实高风险 correction/stale Gate、构建与洁净安装通过｜E-014｜A-018/G-005 通过；保留两次真实 Gate 失败记录。
 - 2026-08-04｜F-017｜新增并进入进行中｜只读健康审计在隔离状态库复现纠正风险旁路、旧版本覆盖、跨租户 thread_id 劫持、Evidence 完整性与检索 limit 等缺陷；用户明确指令“开始修复”｜待 E-014｜必须以失败复现转为通过并重跑既有 Gate。
 - 2026-08-04｜F-016｜状态更新为已完成｜五类问题完成实现修复；真实 GLM/HTTP 主旅程 62/62、别名 10/10、结构化 6/6、编号检索 6/6、离线 32/32 全通过｜E-013｜G-004 通过。

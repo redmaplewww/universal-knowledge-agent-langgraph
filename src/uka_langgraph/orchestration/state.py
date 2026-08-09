@@ -26,6 +26,7 @@ class WorkflowState(TypedDict, total=False):
     correction_ids: Annotated[list[str], merge_unique]
     impact_ids: Annotated[list[str], merge_unique]
     evaluation_ids: Annotated[list[str], merge_unique]
+    evolution_ids: Annotated[list[str], merge_unique]
     receipt_ids: Annotated[list[str], merge_unique]
     warnings: Annotated[list[str], merge_unique]
     errors: Annotated[list[str], merge_unique]

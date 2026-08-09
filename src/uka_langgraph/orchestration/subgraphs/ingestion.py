@@ -89,6 +89,9 @@ def _fanout_understanding(state: WorkflowState) -> list[Send] | str:
     fragment_ids = state.get("fragment_ids", [])
     if not fragment_ids:
         return "hold"
+    # Understanding is deliberately document-level. Fragment IDs remain precise
+    # evidence locators, but sending one model call per fragment destroys the
+    # logical relations that make an experience reusable.
     return [
         Send(
             "understand_one",
@@ -101,12 +104,11 @@ def _fanout_understanding(state: WorkflowState) -> list[Send] | str:
                 "security_scope_id": state["security_scope_id"],
                 "classification": state.get("classification", "internal"),
                 "graph_version": state["graph_version"],
-                "evidence_ids": [fragment_id],
-                "fragment_ids": [fragment_id],
+                "evidence_ids": fragment_ids,
+                "fragment_ids": fragment_ids,
                 "payload": state.get("payload", {}),
             },
         )
-        for fragment_id in fragment_ids
     ]
 
 
@@ -195,6 +197,7 @@ def _compile(
     )
     return {
         "knowledge_ids": result["knowledge_ids"],
+        "evolution_ids": result.get("evolution_ids", []),
         "receipt_ids": result["receipt_ids"],
         "status": result["status"],
         "response": result,

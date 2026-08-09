@@ -15,11 +15,15 @@
 Evidence 是不可变、内容寻址的输入或派生片段。它保存内容 hash、来源、父 Evidence 和
 Locator。理解前先持久化 Evidence，保证模型结果可以回到原始材料。
 
-### Claim、Scope、Knowledge
+### Experience、Scope、Knowledge
 
-- Claim：从一个 Evidence 片段中提取的可检索主张。
-- Scope：主张适用的领域、任务、主体、地域、有效期、风险和置信度。
-- Knowledge：经过审批后进入 active Registry 的版本化主张。
+- Experience：模型基于整篇原文形成的自包含经验，不是单句摘录。它包含标题、背景、问题、
+  机制、行动、结果、理解依据、适用边界、原文摘录和逻辑关系。
+- Scope：经验适用的领域、任务、主体、地域、有效期、风险和置信度。
+- Knowledge：经过审批后进入 active Registry 的版本化 Experience。
+
+原文与 Experience 分开保存：原文是不可变 Evidence，用于对照和追溯；Experience 是 AI 对
+原文逻辑的综合理解，用于检索和后续工作。Fragment 只负责 Locator，不会被逐行机械变成知识。
 
 ### tenant 与 security scope
 
@@ -52,7 +56,7 @@ uv run uka-lg --project-root . doctor
 2. 将选定 profile 注入项目 `.env.local`。
 3. 运行 `doctor --connect`。
 4. 用隔离 tenant/scope 执行一条无敏感样例摄取。
-5. 确认结构化 Claim/Scope、审批中断和 EvidencePack。
+5. 确认结构化 Experience/Scope、审批中断、原文对照和 EvidencePack。
 
 示例：
 
@@ -90,9 +94,9 @@ uv run uka-lg --project-root . ingest `
   --thread-id ingest-002
 ```
 
-支持 UTF-8 文本、Markdown、JSON、CSV 和 HTML。输入先持久化为 Evidence，再解析、理解和
-评估。Provider 合同失败、未知二进制、低置信度、高风险或 Scope 不完整会保留候选而不是
-直接激活。
+支持 UTF-8 文本、Markdown、JSON、CSV 和 HTML。输入先持久化为 Evidence，再解析为带
+Locator 的 Fragment；模型仍按原始文档整体理解，避免丢失因果、条件、顺序、对比和例外。
+Provider 合同失败、未知二进制、低置信度、高风险或 Scope 不完整会保留候选而不是直接激活。
 
 ## 6. 审批与恢复
 
@@ -129,6 +133,16 @@ Receipt 会让恢复和重试保持幂等。不要使用另一个 tenant/scope �
 
 ## 7. 检索知识
 
+先查看当前作用域中的知识库：
+
+```text
+GET /v1/knowledge?tenant_id=demo&security_scope_id=private&limit=100
+```
+
+每个词条会返回 Experience 字段、领域、前提/排除项、原文证据、完整性状态以及 learning /
+evolution 谱系。前端控制台的 **Knowledge library** 可以按领域、主题、理解内容或原文筛选，
+点击“用这条经验检索”会自动填入来源编号和正确领域。
+
 显式领域检索：
 
 ```powershell
@@ -141,7 +155,8 @@ uv run uka-lg --project-root . retrieve `
 ```
 
 还可以使用 `--task`、`--subject`、`--geography` 和 `--as-of`。Scope 过滤在最终 limit 前
-执行，过期、非 active、冲突或完整性不通过的知识不会被拼入答案。
+执行，过期、非 active、冲突或完整性不通过的知识不会被拼入答案。EvidencePack 中的
+`experience` 是综合理解，`evidence[].excerpt` 是对应原文，两者应一起审阅。
 
 当前版本对未传领域的查询执行 FTS5 宽检索，不自动承诺唯一领域分类。对任意领域客户请求，
 优先由调用方提供 `domain`；如果业务要求自动路由，应在网关增加领域推断和置信度 Gate。
@@ -178,6 +193,18 @@ uv run uka-lg --project-root . build-skill `
 权限评审和生产 Gate。
 
 ## 10. Evolution 生命周期
+
+摄取新材料时，系统会先检索相关 active Knowledge，把有限的标题、理解、背景、依据和注意项
+作为模型的先验上下文。模型可以把新经验标为 `reinforces`、`refines` 或 `contradicts`；系统
+还会用相同来源编号建立确定性谱系。关联结果只会创建 evolution candidate：
+
+- `derived_from_knowledge_ids` 记录参考过的旧知识；
+- `knowledge_delta` 记录强化、修正或矛盾；
+- `automatic_activation` 固定为 `false`；
+- 候选必须经过 offline、shadow、canary、human Gate 才能替换策略。
+
+这就是本版本的受治理自进化：既有知识会实际参与后续理解，但任何自我修改都不能绕过证据和
+人工门禁。
 
 Evolution 必须带有 offline、shadow、canary 评测证据，然后进入审批：
 

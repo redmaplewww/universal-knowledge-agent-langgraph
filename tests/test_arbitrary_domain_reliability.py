@@ -19,18 +19,28 @@ from uka_langgraph.orchestration.runtime import AgentRuntime
 
 
 class IdentifierStrippingProvider:
-    revision = "identifier-stripping-test"
+    revision = "identifier-stripping-experience-v2"
 
-    def understand(self, text: str, evidence_id: str) -> UnderstandingResult:
+    def understand(
+        self, text: str, evidence_id: str, prior_knowledge=()
+    ) -> UnderstandingResult:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
         return UnderstandingResult(
-            claims=(
+            claims=tuple(
                 ClaimCandidate(
-                    candidate_id=f"cand-{evidence_id}",
-                    content="Refundable deposits remain liabilities until refund rights expire.",
+                    candidate_id=f"cand-{evidence_id}-{index}",
+                    content=line.split(" ", 1)[1],
                     confidence=0.95,
                     evidence_ids=(evidence_id,),
                     provider_revision=self.revision,
-                ),
+                    kind="experience",
+                    title=f"Deposit policy {index}",
+                    context="A source-specific deposit accounting policy applies.",
+                    rationale="The conclusion follows from the cited policy line.",
+                    source_excerpts=(line,),
+                    schema_version=2,
+                )
+                for index, line in enumerate(lines)
             ),
             scopes=(
                 ApplicabilityScope(

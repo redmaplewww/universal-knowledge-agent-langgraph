@@ -98,6 +98,7 @@ class AgentRuntime:
             "correction_ids": [],
             "impact_ids": [],
             "evaluation_ids": [],
+            "evolution_ids": [],
             "receipt_ids": [],
             "warnings": [],
             "errors": [],
@@ -192,6 +193,7 @@ class AgentRuntime:
         values = dict(snapshot.values)
         self._assert_snapshot_scope(values, tenant_id, security_scope_id)
         return {
+            "thread_id": thread_id,
             "values": values,
             "next": list(snapshot.next),
             "interrupts": [

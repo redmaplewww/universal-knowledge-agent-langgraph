@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from uka_langgraph.domain.models import (
     DomainRevision,
@@ -89,7 +89,12 @@ class RepositoryPort(Protocol):
 class UnderstandingPort(Protocol):
     revision: str
 
-    def understand(self, text: str, evidence_id: str) -> UnderstandingResult: ...
+    def understand(
+        self,
+        text: str,
+        evidence_id: str,
+        prior_knowledge: tuple[dict[str, Any], ...] = (),
+    ) -> UnderstandingResult: ...
 
     def check_connection(self) -> dict[str, object]: ...
 

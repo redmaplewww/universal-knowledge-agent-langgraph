@@ -20,6 +20,6 @@ def test_deterministic_provider_health_is_redacted() -> None:
     assert health == {
         "status": "ok",
         "mode": "deterministic",
-        "provider_revision": "deterministic-v1",
+        "provider_revision": "deterministic-experience-v2",
         "latency_ms": 0,
     }
