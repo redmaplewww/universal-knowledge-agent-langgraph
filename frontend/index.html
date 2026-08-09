@@ -58,6 +58,7 @@
               <label class="field-group"><span class="field-label">ACTOR</span><input id="actor-id" value="control-room" /></label>
               <button class="primary-button" id="ingest-button" type="button"><span>送入知识图谱</span><b>↗</b></button>
             </div>
+            <p class="field-help"><strong>ACTOR 是什么？</strong> 它是这次操作的身份标签，用于审计“谁发起了入库”。<code>control-room</code> 是本地控制台的默认标签，不等于管理员权限，也不会绕过审批。</p>
             <div class="notice hidden" id="ingest-notice"></div>
           </article>
 
@@ -85,12 +86,23 @@
         </aside>
       </section>
 
+      <section class="library-section" id="knowledge-library">
+        <div class="section-heading"><div><span class="section-index">04</span><h2>Knowledge library</h2></div><span class="section-note" id="library-summary">已沉淀的 active knowledge</span></div>
+        <article class="panel library-panel">
+          <div class="library-toolbar">
+            <div><span class="status-label">ACTIVE KNOWLEDGE BASE</span><p>这里展示当前租户和安全作用域内已经沉淀的经验词条。点击“用于检索”即可带着正确领域上下文回到检索区。</p></div>
+            <div class="library-actions"><input id="library-filter" placeholder="筛选领域、主题或正文" aria-label="筛选知识库" /><button class="outline-button" id="refresh-library" type="button">刷新知识库 ↻</button></div>
+          </div>
+          <div class="knowledge-grid" id="knowledge-grid"><div class="library-empty"><span class="empty-glyph">⌁</span><div><strong>知识库正在加载</strong><p>会按当前 tenant / security scope 展示 active 词条。</p></div></div></div>
+        </article>
+      </section>
+
       <section class="approval-drawer hidden" id="approval-drawer">
         <div><span class="eyebrow">HUMAN GATE · INTERRUPT DETECTED</span><h3>这条知识需要独立审批</h3><p id="approval-copy">系统已保留原始证据，确认后才会进入 active knowledge。</p></div>
         <div class="approval-meta"><span class="mono" id="approval-thread">thread —</span><div><button class="reject-button" id="reject-button" type="button">拒绝</button><button class="approve-button" id="approve-button" type="button">批准并沉淀 <b>↗</b></button></div></div>
       </section>
       <footer><span>UNIVERSAL KNOWLEDGE AGENT</span><span>LOCAL PREVIEW · EVIDENCE ALWAYS WINS</span></footer>
     </main>
-    <script src="./app.js" defer></script>
+    <script src="./app.js?v=20260810-library" defer></script>
   </body>
 </html>

@@ -53,6 +53,10 @@ class RepositoryPort(Protocol):
         self, security: SecurityScope, object_type: str, object_id: str
     ) -> DomainRevision | None: ...
 
+    def list_active_knowledge(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]: ...
+
     def search_active_knowledge(
         self, security: SecurityScope, query: str, limit: int
     ) -> list[DomainRevision]: ...

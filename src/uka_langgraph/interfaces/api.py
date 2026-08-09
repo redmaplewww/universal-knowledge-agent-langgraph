@@ -116,6 +116,18 @@ def create_app(
             limit=body.limit,
         )
 
+    @app.get("/v1/knowledge")
+    def list_knowledge(
+        tenant_id: str, security_scope_id: str, limit: int = 100, domain: str | None = None
+    ) -> list[dict[str, Any]]:
+        return _call(
+            agent.list_knowledge,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
+            domain=domain,
+        )
+
     @app.post("/v1/corrections")
     def correct(body: CorrectionBody) -> dict[str, Any]:
         return _call(

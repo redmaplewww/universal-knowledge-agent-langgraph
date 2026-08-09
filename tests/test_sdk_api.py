@@ -27,6 +27,10 @@ def test_sdk_ingest_retrieve_and_resume(settings) -> None:
         security_scope_id="private",
     )
     assert approved["status"] == "active"
+    library = agent.list_knowledge(tenant_id="tenant-a", security_scope_id="private")
+    assert library[0]["knowledge_id"] in approved["knowledge_ids"]
+    assert library[0]["status"] == "active"
+    assert library[0]["content"] == "SDK knowledge requires approval."
     retrieved = agent.retrieve(
         "approval", tenant_id="tenant-a", security_scope_id="private"
     )
@@ -82,6 +86,19 @@ def test_http_api_contract(settings) -> None:
     )
     assert retrieve.status_code == 200
     assert retrieve.json()["status"] == "answered"
+    library = client.get(
+        "/v1/knowledge",
+        params={"tenant_id": "tenant-a", "security_scope_id": "private"},
+    )
+    assert library.status_code == 200
+    assert library.json()[0]["status"] == "active"
+    assert library.json()[0]["content"] == "API evidence is scoped to tenant A."
+    forbidden_library = client.get(
+        "/v1/knowledge",
+        params={"tenant_id": "tenant-b", "security_scope_id": "private"},
+    )
+    assert forbidden_library.status_code == 200
+    assert forbidden_library.json() == []
     forbidden = client.post(
         "/v1/retrieve",
         json={

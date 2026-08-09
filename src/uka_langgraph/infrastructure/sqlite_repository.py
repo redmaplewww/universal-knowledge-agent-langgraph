@@ -359,6 +359,33 @@ class SQLiteRepository:
             ).fetchone()
         return _revision_from_row(row) if row else None
 
+    def list_active_knowledge(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT r.*
+                FROM active_registry a
+                JOIN revisions r
+                  ON r.tenant_id = a.tenant_id
+                 AND r.security_scope_id = a.security_scope_id
+                 AND r.object_type = a.object_type
+                 AND r.object_id = a.object_id
+                 AND r.revision = a.revision
+                WHERE a.tenant_id = ? AND a.security_scope_id = ?
+                  AND a.object_type = 'knowledge'
+                ORDER BY a.activated_at DESC, r.created_at DESC, r.object_id ASC
+                LIMIT ?
+                """,
+                (
+                    security.tenant_id,
+                    security.security_scope_id,
+                    max(1, min(limit, 1000)),
+                ),
+            ).fetchall()
+        return [_revision_from_row(row) for row in rows]
+
     def activate_revision(
         self, revision: DomainRevision, *, expected_active_revision: int | None = None
     ) -> None:
@@ -445,9 +472,16 @@ class SQLiteRepository:
         if not terms:
             return []
         operator = " AND " if identifiers else " OR "
-        match_query = operator.join(
-            f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:16]
-        )
+        if identifiers:
+            match_query = operator.join(
+                f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:16]
+            )
+        else:
+            # Prefix matching keeps short Latin tokens searchable when FTS unicode61
+            # attaches adjacent CJK text to the same token (for example, "Agent开发").
+            match_query = operator.join(
+                f'"{term.replace(chr(34), chr(34) * 2)}"*' for term in terms[:16]
+            )
         with self._connect() as connection:
             rows = connection.execute(
                 """

@@ -1,6 +1,6 @@
 const API_BASE = window.UKA_API_BASE || "http://127.0.0.1:8877";
 const $ = (id) => document.getElementById(id);
-const state = { health: null, pendingThread: null, events: [] };
+const state = { health: null, pendingThread: null, events: [], knowledge: [] };
 
 function context() {
   return { tenant_id: $("tenant-id").value.trim() || "demo-ui", security_scope_id: $("security-scope").value.trim() || "private", actor_id: $("actor-id").value.trim() || "control-room" };
@@ -27,3 +27,28 @@ async function retrieve() { const query = $("query-text").value.trim(); if (!que
 async function resume(decision) { const thread = state.pendingThread; if (!thread) return; try { const result = await api(`/v1/threads/${encodeURIComponent(thread)}/resume?tenant_id=${encodeURIComponent(context().tenant_id)}&security_scope_id=${encodeURIComponent(context().security_scope_id)}`, { method:"POST", body:JSON.stringify({ value:{ decision } }) }); addEvent("Human gate", `${decision.toUpperCase()} · ${compact(thread)}`, decision === "approve" ? "APPROVED" : "REJECTED"); hideApproval(); notice(decision === "approve" ? "已批准，知识进入沉淀流程。" : "已拒绝，线程保持可追溯状态。", decision === "approve" ? "" : "warn"); if (result) await refreshThreadEvents(thread); } catch (error) { notice(`审批失败：${error.message}`, "error"); } }
 async function refreshThreadEvents(thread) { try { const events = await api(`/v1/threads/${encodeURIComponent(thread)}/events?tenant_id=${encodeURIComponent(context().tenant_id)}&security_scope_id=${encodeURIComponent(context().security_scope_id)}&limit=10`); (Array.isArray(events) ? events : []).slice(0, 3).forEach((event) => addEvent(event.event_type || "thread event", `${event.status || "recorded"} · ${compact(event.event_id || "")}`, String(event.status || "RECORDED").toUpperCase())); } catch (_) {} }
 $("refresh-button").addEventListener("click", loadHealth); $("ingest-button").addEventListener("click", ingest); $("retrieve-button").addEventListener("click", retrieve); $("approve-button").addEventListener("click", () => resume("approve")); $("reject-button").addEventListener("click", () => resume("reject")); $("clear-events").addEventListener("click", () => { state.events = []; renderEvents(); }); $("tenant-id").addEventListener("input", () => { $("metric-tenant").textContent = `tenant / ${$("tenant-id").value || "—"}`; }); $("security-scope").addEventListener("input", () => { $("metric-scope").textContent = $("security-scope").value || "—"; $("scope-chip").textContent = $("security-scope").value || "—"; }); document.addEventListener("keydown", (event) => { if (event.key.toLowerCase() === "r" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) loadHealth(); if ((event.metaKey || event.ctrlKey) && event.key === "Enter") retrieve(); }); loadHealth();
+function libraryScope(entry) { return entry.domain_labels?.[0] || entry.domain_ids?.[0] || "unclassified"; }
+function libraryTags(entry) { return [...(entry.subjects || []), ...(entry.tasks || [])].filter(Boolean).slice(0, 4); }
+function libraryQuery(entry) { const anchor = entry.source_identifiers?.[0] || entry.subjects?.[0] || libraryScope(entry); const task = entry.tasks?.[0] || "关键注意事项"; return `${anchor} ${task}`; }
+function renderKnowledge(entries) {
+  const grid = $("knowledge-grid");
+  const filter = $("library-filter").value.trim().toLowerCase();
+  const visible = (entries || []).filter((entry) => !filter || JSON.stringify(entry).toLowerCase().includes(filter));
+  $("library-summary").textContent = `${visible.length} 条 active knowledge · ${context().tenant_id} / ${context().security_scope_id}`;
+  if (!visible.length) { grid.innerHTML = `<div class="library-empty"><span class="empty-glyph">⌁</span><div><strong>${filter ? "没有匹配的知识词条" : "当前作用域还没有 active knowledge"}</strong><p>${filter ? "换一个领域、主题或关键词试试。" : "完成一次入库并批准后，词条会出现在这里。"}</p></div></div>`; return; }
+  grid.innerHTML = visible.map((entry) => {
+    const tags = libraryTags(entry);
+    const query = libraryQuery(entry);
+    return `<article class="knowledge-card"><div class="knowledge-card-top"><span class="domain-badge">${escapeHtml(libraryScope(entry))}</span><span class="knowledge-state">${escapeHtml(String(entry.status || "active").toUpperCase())}</span></div><h3>${escapeHtml(entry.subjects?.[0] || entry.source_identifiers?.[0] || "Knowledge entry")}</h3><p class="knowledge-content">${escapeHtml(entry.content || "")}</p><div class="knowledge-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("") || `<span>general</span>`}</div><div class="knowledge-meta"><span>confidence <b>${Math.round(Number(entry.confidence || 0) * 100)}%</b></span><span>rev ${escapeHtml(entry.revision || 1)}</span><span>${escapeHtml((entry.evidence_ids || []).length)} evidence</span></div><div class="knowledge-footer"><code>${escapeHtml(entry.knowledge_id || "knowledge")}</code><button class="knowledge-query-button" type="button" data-query="${escapeHtml(query)}" data-domain="${escapeHtml(entry.domain_ids?.[0] || "")}">用于检索 ↗</button></div></article>`;
+  }).join("");
+  grid.querySelectorAll(".knowledge-query-button").forEach((button) => button.addEventListener("click", () => { $("query-text").value = button.dataset.query || ""; $("domain-scope").value = button.dataset.domain || ""; $("scope-chip").textContent = button.dataset.domain || context().security_scope_id; $("retrieval-result").scrollIntoView({ behavior: "smooth", block: "center" }); $("query-text").focus(); }));
+}
+async function loadKnowledge() {
+  try { const params = new URLSearchParams({ tenant_id: context().tenant_id, security_scope_id: context().security_scope_id, limit: "100" }); const entries = await api(`/v1/knowledge?${params.toString()}`); state.knowledge = Array.isArray(entries) ? entries : []; renderKnowledge(state.knowledge); } catch (error) { $("knowledge-grid").innerHTML = `<div class="library-empty"><span class="empty-glyph">!</span><div><strong>知识库暂时不可用</strong><p>${escapeHtml(error.message)}</p></div></div>`; }
+}
+$("refresh-library").addEventListener("click", loadKnowledge);
+$("library-filter").addEventListener("input", () => renderKnowledge(state.knowledge));
+$("tenant-id").addEventListener("change", loadKnowledge);
+$("security-scope").addEventListener("change", loadKnowledge);
+$("approve-button").addEventListener("click", () => setTimeout(loadKnowledge, 1600));
+loadKnowledge();

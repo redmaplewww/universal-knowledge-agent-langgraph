@@ -26,6 +26,13 @@
 - Reworked the control room from dark mode to a high-contrast light theme after visual review.
 - Browser verification confirms the hero, metric cards, intake form, retrieval panel, and evidence trail remain readable on the running preview.
 
+## Knowledge library and retrieval guidance (2026-08-10)
+
+- Added tenant/scope-protected `GET /v1/knowledge` and SDK listing support with resolved domain, subjects, tasks, confidence, revisions, classifications, and evidence IDs.
+- Added the frontend Knowledge library section with filtering and one-click scoped retrieval actions.
+- Added an explicit explanation of `actor_id` and the default `control-room` audit label.
+- Hardened FTS retrieval with prefix matching for Latin tokens adjacent to CJK text; regression coverage passes.
+
 ## 阻塞项
 
 | 阻塞 | 影响 | 解除条件 | 状态 |

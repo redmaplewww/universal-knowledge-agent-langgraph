@@ -67,6 +67,28 @@ def test_security_filter_precedes_retrieval(settings) -> None:
         assert other_scope["status"] == "unknown"
 
 
+def test_retrieval_matches_prefix_attached_to_cjk_text(settings) -> None:
+    raw_text = "Agent开发过程中要时刻注意真实需求测试。"
+    with AgentRuntime(settings) as runtime:
+        object_ref = runtime.stage_text(raw_text)
+        result = runtime.invoke(
+            intent="ingest",
+            tenant_id="tenant-a",
+            security_scope_id="private",
+            input_refs=[object_ref],
+            payload={"auto_approve": True},
+        )
+        retrieved = runtime.invoke(
+            intent="retrieve",
+            tenant_id="tenant-a",
+            security_scope_id="private",
+            payload={"query": "Agent"},
+        )
+        assert result["status"] == "active"
+        assert retrieved["status"] == "answered"
+        assert retrieved["response"]["answer"] == raw_text
+
+
 def test_receipts_are_idempotent_and_tenant_scoped(settings) -> None:
     with AgentRuntime(settings) as runtime:
         object_ref = runtime.stage_text("Same payload.")

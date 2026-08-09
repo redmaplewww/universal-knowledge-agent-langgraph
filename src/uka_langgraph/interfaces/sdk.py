@@ -4,6 +4,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+from uka_langgraph.domain.models import SecurityScope
 from uka_langgraph.infrastructure.settings import Settings
 from uka_langgraph.orchestration.runtime import AgentRuntime
 
@@ -102,6 +103,75 @@ class UniversalKnowledgeAgent:
                 },
             )
         return _public(result)
+
+    def list_knowledge(
+        self,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        limit: int = 100,
+        domain: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List active knowledge with its resolved applicability scope."""
+        with AgentRuntime(self.settings) as runtime:
+            security = SecurityScope(tenant_id, security_scope_id)
+            revisions = runtime.services.repository.list_active_knowledge(security, limit)
+            entries: list[dict[str, Any]] = []
+            for revision in revisions:
+                scope_id = str(revision.payload.get("scope_id", ""))
+                scope_revision = (
+                    runtime.services.repository.get_revision(security, "scope", scope_id)
+                    if scope_id
+                    else None
+                )
+                scope_payload = scope_revision.payload if scope_revision else {}
+                domains = [
+                    str(item)
+                    for item in scope_payload.get(
+                        "domain_ids", scope_payload.get("domain", [])
+                    )
+                ]
+                labels = [str(item) for item in scope_payload.get("domain_labels", [])]
+                aliases = [str(item) for item in scope_payload.get("domain_aliases", [])]
+                if domain and domain.casefold() not in {
+                    item.casefold() for item in (*domains, *labels, *aliases)
+                }:
+                    continue
+                entries.append(
+                    {
+                        "knowledge_id": revision.object_id,
+                        "revision": revision.revision,
+                        "status": str(revision.status),
+                        "classification": revision.security.classification,
+                        "content": str(revision.payload.get("content", "")),
+                        "confidence": float(revision.payload.get("confidence", 0.0)),
+                        "scope_id": scope_id,
+                        "domain_ids": domains,
+                        "domain_labels": labels,
+                        "domain_aliases": aliases,
+                        "subjects": [str(item) for item in scope_payload.get("subjects", [])],
+                        "tasks": [str(item) for item in scope_payload.get("tasks", [])],
+                        "preconditions": [
+                            str(item) for item in scope_payload.get("preconditions", [])
+                        ],
+                        "exclusions": [
+                            str(item) for item in scope_payload.get("exclusions", [])
+                        ],
+                        "geography": [
+                            str(item) for item in scope_payload.get("geography", [])
+                        ],
+                        "risk": str(scope_payload.get("risk", "normal")),
+                        "scope_confidence": float(scope_payload.get("confidence", 0.0)),
+                        "review_required": bool(scope_payload.get("review_required", False)),
+                        "provider_revision": scope_payload.get("provider_revision"),
+                        "source_identifiers": [
+                            str(item) for item in revision.payload.get("source_identifiers", [])
+                        ],
+                        "evidence_ids": list(revision.evidence_ids),
+                        "created_at": revision.created_at,
+                    }
+                )
+            return _public(entries)
 
     def correct_text(
         self,
@@ -249,4 +319,3 @@ def _public(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
-
