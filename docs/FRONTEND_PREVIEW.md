@@ -25,13 +25,31 @@ Open <http://127.0.0.1:8890/>. The frontend calls `http://127.0.0.1:8877` by def
 ## What is included
 
 - Provider and graph health summary, including the configured model revision.
-- Evidence-first knowledge intake with the `accepted -> interrupt -> resume` approval flow.
+- Evidence-first knowledge intake with the `accepted -> interrupt -> resume` approval flow and a
+  full decision brief before activation.
 - Tenant and security-scope context controls.
 - Scoped retrieval with answer, unknowns, and evidence-pack rendering.
 - A live evidence-trail timeline backed by `/v1/threads/{thread_id}/events`.
 - An active Experience library backed by `GET /v1/knowledge`, including the model synthesis,
   context, problem, mechanism, action, outcome, rationale, source logic, applicability boundary,
-  original-evidence comparison, learning lineage, and a one-click retrieval action.
+  original-evidence comparison, learning lineage, and a one-click retrieval action. The library
+  shows five compact rows by default, expands one row at a time, and offers an explicit “show more”
+  control so the page does not grow with every stored entry.
+
+### Approval decision brief
+
+An interrupted ingest returns a tenant/scope-protected `approval_context`. The frontend renders:
+
+- the candidate title, synthesis, confidence, classification, schema version, delta, and lineage;
+- context → problem → mechanism → action → outcome → rationale as a reviewable reasoning chain;
+- explicit source relations, resolved domains/tasks, risk, scope confidence, preconditions,
+  exclusions, unknowns, caveats, and review warnings;
+- original Evidence excerpts with Locator, Evidence ID, and content hash;
+- the exact effect of approving or rejecting the candidate.
+
+The context is resolved dynamically from the candidate, Scope, and Evidence repositories. Original
+text is returned only through the authorized response and is not copied into the LangGraph
+checkpoint.
 
 ### Actor and retrieval explained
 
@@ -52,7 +70,7 @@ allow-list with the exact origin used by that deployment.
 
 ## Preview verification
 
-The `0.2.0` preview was exercised against the real configured `glm-5.2` provider using an
+The `0.2.1` preview was exercised against the real configured `glm-5.2` provider using an
 isolated `demo-ui/private` state:
 
 1. ingest and approve a contextual Agent-governance baseline and a refinement;
@@ -60,6 +78,10 @@ isolated `demo-ui/private` state:
 3. route and retrieve cybersecurity, finance, mechanical-engineering, and education experiences;
 4. filter the Experience library and use the education card's one-click retrieval action;
 5. confirm `ANSWERED / 1 EXPERIENCE`, expandable original evidence, and zero browser console errors.
+6. generate a real high-risk production-patch candidate, verify the complete decision brief, then
+   reject it so it never enters active Knowledge;
+7. verify the library initially renders 5 of 7 compact rows, only one row opens at a time, “show
+   more” reveals all 7, and the 390 px mobile viewport has no horizontal overflow.
 
 The reproducible AAWO summary is in
 [`CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`](CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md).

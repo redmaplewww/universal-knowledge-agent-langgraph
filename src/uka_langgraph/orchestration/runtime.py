@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -10,6 +11,7 @@ from typing import Any, Literal
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from uka_langgraph.domain.models import DomainRevision, Evidence, SecurityScope
 from uka_langgraph.infrastructure.bootstrap import build_services
 from uka_langgraph.infrastructure.settings import Settings
 from uka_langgraph.orchestration.context import RuntimeContext
@@ -147,6 +149,13 @@ class AgentRuntime:
                 "error_count": len(result.get("errors", [])),
             },
         )
+        if "__interrupt__" in result:
+            result = {
+                **result,
+                "approval_context": self._build_approval_context(
+                    result, result.get("__interrupt__", [])
+                ),
+            }
         return result
 
     def resume(
@@ -192,14 +201,97 @@ class AgentRuntime:
         )
         values = dict(snapshot.values)
         self._assert_snapshot_scope(values, tenant_id, security_scope_id)
+        interrupts = [
+            {"id": item.id, "value": item.value} for item in snapshot.interrupts
+        ]
         return {
             "thread_id": thread_id,
             "values": values,
             "next": list(snapshot.next),
-            "interrupts": [
-                {"id": item.id, "value": item.value} for item in snapshot.interrupts
-            ],
+            "interrupts": interrupts,
+            "approval_context": (
+                self._build_approval_context(values, interrupts) if interrupts else None
+            ),
             "checkpoint_id": snapshot.config.get("configurable", {}).get("checkpoint_id"),
+        }
+
+    def _build_approval_context(
+        self, values: dict[str, Any], interrupts: list[Any]
+    ) -> dict[str, Any]:
+        security = SecurityScope(
+            tenant_id=str(values.get("tenant_id", "")),
+            security_scope_id=str(values.get("security_scope_id", "")),
+            classification=str(values.get("classification", "internal")),
+        )
+        interrupt_value = _interrupt_value(interrupts[-1]) if interrupts else {}
+        details = interrupt_value.get("details", {})
+        candidate_ids = _string_list(
+            values.get("candidate_ids") or details.get("candidate_ids")
+        )
+        scope_ids = _string_list(values.get("scope_ids") or details.get("scope_ids"))
+        evidence_ids = _string_list(
+            values.get("evidence_ids") or details.get("evidence_ids")
+        )
+        candidates = [
+            self.services.repository.get_revision(security, "candidate", candidate_id)
+            for candidate_id in candidate_ids
+        ]
+        scopes = [
+            self.services.repository.get_revision(security, "scope", scope_id)
+            for scope_id in scope_ids
+        ]
+        evidence = [
+            self.services.repository.get_evidence(security, evidence_id)
+            for evidence_id in evidence_ids[:12]
+        ]
+        return {
+            "type": str(interrupt_value.get("type", "approval_required")),
+            "subject": str(interrupt_value.get("subject", "unknown_approval")),
+            "request_id": str(values.get("request_id", "")),
+            "thread_id": str(values.get("thread_id", "")),
+            "intent": str(values.get("intent", "")),
+            "status": str(values.get("status", "review_required")),
+            "actor_id": str(values.get("actor_id", "")),
+            "classification": security.classification,
+            "allowed_decisions": _string_list(
+                interrupt_value.get("allowed_decisions") or ["approve", "reject"]
+            ),
+            "warnings": _string_list(values.get("warnings") or details.get("warnings")),
+            "errors": _string_list(values.get("errors")),
+            "candidates": [
+                _candidate_preview(candidate)
+                for candidate in candidates
+                if candidate is not None
+            ],
+            "scopes": [
+                _scope_preview(scope) for scope in scopes if scope is not None
+            ],
+            "evidence": [
+                self._evidence_preview(item) for item in evidence if item is not None
+            ],
+            "evidence_count": len(evidence_ids),
+            "evidence_truncated": len(evidence_ids) > 12,
+            "decision_effects": {
+                "approve": "compile_and_activate_knowledge",
+                "reject": "keep_candidate_inactive_and_traceable",
+            },
+        }
+
+    def _evidence_preview(self, evidence: Evidence) -> dict[str, Any]:
+        try:
+            excerpt = self.services.objects.read_bytes(evidence.object_ref).decode(
+                "utf-8", errors="replace"
+            )
+        except (OSError, ValueError, UnicodeError):
+            excerpt = ""
+        return {
+            "evidence_id": evidence.evidence_id,
+            "parent_evidence_id": evidence.parent_evidence_id,
+            "content_hash": evidence.content_hash,
+            "media_type": evidence.media_type,
+            "source_type": evidence.source_type,
+            "locator": asdict(evidence.locator) if evidence.locator else None,
+            "excerpt": _bounded_text(excerpt, 2000),
         }
 
     def events(
@@ -264,3 +356,101 @@ class AgentRuntime:
             "security_scope_id"
         ) != security_scope_id:
             raise LookupError("thread not found in security scope")
+
+
+def _interrupt_value(interrupt_item: Any) -> dict[str, Any]:
+    if isinstance(interrupt_item, dict):
+        value = interrupt_item.get("value", interrupt_item)
+    else:
+        value = getattr(interrupt_item, "value", {})
+    return value if isinstance(value, dict) else {}
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _bounded_text(value: Any, limit: int = 1200) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else f"{text[:limit]}…"
+
+
+def _candidate_preview(candidate: DomainRevision) -> dict[str, Any]:
+    payload = candidate.payload
+    text_fields = (
+        "kind",
+        "content",
+        "provider_revision",
+        "title",
+        "context",
+        "problem",
+        "mechanism",
+        "action",
+        "outcome",
+        "rationale",
+        "knowledge_delta",
+    )
+    preview: dict[str, Any] = {
+        "candidate_id": candidate.object_id,
+        "revision": candidate.revision,
+        "status": str(candidate.status),
+        "classification": candidate.security.classification,
+        "evidence_ids": list(candidate.evidence_ids),
+        "confidence": float(payload.get("confidence", 0.0)),
+        "experience_schema_version": int(
+            payload.get("experience_schema_version", 1)
+        ),
+        "scope_ids": _string_list(payload.get("scope_ids")),
+        "unknowns": _string_list(payload.get("unknowns")),
+        "caveats": [
+            _bounded_text(item, 500) for item in _string_list(payload.get("caveats"))
+        ],
+        "source_identifiers": _string_list(payload.get("source_identifiers")),
+        "source_excerpts": [
+            _bounded_text(item, 1000)
+            for item in _string_list(payload.get("source_excerpts"))[:12]
+        ],
+        "derived_from_knowledge_ids": _string_list(
+            payload.get("derived_from_knowledge_ids")
+        ),
+        "logical_relations": [],
+    }
+    preview.update({field: _bounded_text(payload.get(field)) for field in text_fields})
+    relations = payload.get("logical_relations", [])
+    if isinstance(relations, list):
+        preview["logical_relations"] = [
+            {
+                "source": _bounded_text(item.get("source"), 800),
+                "relation": _bounded_text(item.get("relation"), 80),
+                "target": _bounded_text(item.get("target"), 800),
+            }
+            for item in relations[:20]
+            if isinstance(item, dict)
+        ]
+    return preview
+
+
+def _scope_preview(scope: DomainRevision) -> dict[str, Any]:
+    payload = scope.payload
+    list_fields = (
+        "domain",
+        "domain_ids",
+        "domain_labels",
+        "subjects",
+        "tasks",
+        "preconditions",
+        "exclusions",
+        "geography",
+        "unknowns",
+    )
+    return {
+        "scope_id": scope.object_id,
+        "revision": scope.revision,
+        "status": str(scope.status),
+        "risk": str(payload.get("risk", "normal")),
+        "confidence": float(payload.get("confidence", 0.0)),
+        "review_required": bool(payload.get("review_required", False)),
+        **{field: _string_list(payload.get(field)) for field in list_fields},
+    }

@@ -5,7 +5,7 @@
 摄取、检索、纠正、Skill 和受治理 Evolution 生命周期。
 
 仓库名：`universal-knowledge-agent-langgraph`  
-当前版本：`0.2.0`
+当前版本：`0.2.1`
 运行时：Python 3.11+、LangGraph 1.2.10、SQLite、FastAPI
 
 > 本项目是独立实现，不导入、不依赖同级旧 `universal-knowledge-agent` 或 AAWO 运行时。
@@ -18,6 +18,8 @@
   行动、结果、理解依据、适用边界、原文摘录和显式逻辑关系。
 - Fragment 只承担精确 Evidence Locator，不再被逐句机械编译为脱离上下文的知识。
 - 在高风险、低置信度、冲突或 Scope 不完整时进入人工审批，不直接生成确定答案。
+- 审批响应提供受 tenant/scope 保护的 `approval_context`：候选 Experience、理解链、风险、
+  适用边界、原文和 Locator 可在批准前完整核对，且原文不会进入 checkpoint。
 - 按 tenant、security scope、active revision、领域、任务、主体、地域和时效过滤检索结果。
 - 通过 EvidencePack 返回综合 Experience、Scope、原文摘录、Evidence hash、父 Evidence 和 Locator。
 - 以 `interrupt()`/`resume` 实现跨进程审批恢复，以 Receipt 保证重试不重复副作用。
@@ -142,7 +144,7 @@ OpenAPI/Swagger：`http://127.0.0.1:8765/docs`
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | `GET` | `/health` | 非秘密配置和可选 Provider 健康检查 |
-| `POST` | `/v1/ingest` | 摄取文本并可能返回审批中断 |
+| `POST` | `/v1/ingest` | 摄取文本并可能返回带 `approval_context` 的审批中断 |
 | `POST` | `/v1/retrieve` | 受 tenant/scope/Scope 过滤的 EvidencePack 检索 |
 | `GET` | `/v1/knowledge` | 展示 active Experience、原文对照、逻辑关系和演进谱系 |
 | `POST` | `/v1/corrections` | 创建纠正版本 |
@@ -206,7 +208,7 @@ uv build
 
 ## 版本与授权说明
 
-当前版本是 `0.2.0`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
+当前版本是 `0.2.1`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
 但当前没有授予开源再分发、商用或修改授权。若需要以 MIT、Apache-2.0 或其他许可证公开，
 请先明确授权后再补充 LICENSE 文件。
 

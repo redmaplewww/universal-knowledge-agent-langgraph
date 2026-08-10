@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -16,6 +18,13 @@ def test_sdk_ingest_retrieve_and_resume(settings) -> None:
         thread_id="sdk-review",
     )
     assert interrupted["__interrupt__"][0]["value"]["subject"] == "knowledge_activation"
+    approval = interrupted["approval_context"]
+    assert approval["subject"] == "knowledge_activation"
+    assert approval["decision_effects"]["approve"] == "compile_and_activate_knowledge"
+    assert approval["candidates"][0]["content"] == "SDK knowledge requires approval."
+    assert approval["candidates"][0]["scope_ids"]
+    assert approval["scopes"]
+    assert approval["evidence"][0]["excerpt"] == "SDK knowledge requires approval."
     before_events = agent.events(
         "sdk-review", tenant_id="tenant-a", security_scope_id="private"
     )
@@ -47,6 +56,33 @@ def test_http_api_contract(settings) -> None:
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["provider_mode"] == "deterministic"
+
+    review = client.post(
+        "/v1/ingest",
+        json={
+            "text": "Approval preview evidence remains visible to the reviewer.",
+            "tenant_id": "tenant-a",
+            "security_scope_id": "private",
+            "auto_approve": False,
+            "thread_id": "api-approval-preview",
+        },
+    )
+    assert review.status_code == 200
+    review_payload = review.json()
+    assert review_payload["approval_context"]["candidates"][0]["content"].startswith(
+        "Approval preview evidence"
+    )
+    review_status = client.get(
+        "/v1/threads/api-approval-preview",
+        params={"tenant_id": "tenant-a", "security_scope_id": "private"},
+    )
+    assert review_status.status_code == 200
+    assert review_status.json()["approval_context"]["evidence"][0]["excerpt"].startswith(
+        "Approval preview evidence"
+    )
+    assert "Approval preview evidence" not in json.dumps(
+        review_status.json()["values"]
+    )
 
     ingest = client.post(
         "/v1/ingest",

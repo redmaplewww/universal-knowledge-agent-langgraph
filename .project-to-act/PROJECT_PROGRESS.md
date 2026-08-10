@@ -13,6 +13,7 @@
 | GitHub 公开仓库发布与手册交付 | 已完成 | Codex | 公开仓库、首个 main 提交、README/用户手册/运维手册可访问 | E-016 | 2026-08-05 |
 | AAWO 真实 LLM 完整回归 | 部分通过 | Codex | 领域/对抗 62/62 通过；生命周期发现线程状态响应契约缺口 | E-017 | 2026-08-09 |
 | 上下文 Experience、原文对照与受治理自进化 | 已完成 | Codex | F-018 与 A-019/G-006 通过，前端展示真实 4 领域知识 | E-019 | 2026-08-10 |
+| 审批决策单与紧凑知识库 | 已完成 | Codex | F-019 与 A-020/G-007 通过；真实候选、桌面/移动端和发布包验证完成 | E-020 | 2026-08-10 |
 
 ## Frontend preview update (2026-08-09)
 
@@ -34,6 +35,17 @@
 - Added an explicit explanation of `actor_id` and the default `control-room` audit label.
 - Hardened FTS retrieval with prefix matching for Latin tokens adjacent to CJK text; regression coverage passes.
 
+## Approval decision brief and compact library (2026-08-10)
+
+- Added response-time `approval_context` resolution for the pending candidate, Scope, Evidence,
+  Locator, warnings, risk, lineage, and decision effects without copying source text into checkpoints.
+- Rebuilt the human gate as an evidence-dense decision brief with a sticky approve/reject action bar.
+- Rebuilt the Knowledge library as five compact rows by default, one expanded row at a time, with
+  explicit show-more/collapse controls.
+- Real `glm-5.2` browser verification rendered a high-risk production-patch candidate and its original
+  evidence; the candidate was rejected and remained inactive. Desktop and 390 px responsive checks,
+  browser console, 47 tests, Ruff, build, and clean install passed.
+
 ## 阻塞项
 
 | 阻塞 | 影响 | 解除条件 | 状态 |
@@ -52,6 +64,10 @@
 
 ## 进度历史
 
+- 2026-08-10｜完成 `0.2.1` F-019｜新增动态 `approval_context` 与完整审批决策单；真实 GLM 候选
+  展示候选理解、六段逻辑、Scope/risk、原文/Locator/hash 和批准/拒绝效果后被拒绝；知识库默认
+  5/7 条、单条展开、显示更多与 390px 无横向溢出；47/47、Ruff、Node、编译、wheel/sdist、
+  Python 3.11 洁净安装和 49 个依赖一致性通过｜E-020｜A-020/G-007。
 - 2026-08-10｜完成 `0.2.0` F-018｜从逐 Fragment 理解改为文档级 Experience；存储综合理解、
   LogicalRelation 与原文对照；active Knowledge 参与后续理解并生成不自动激活的演进候选；首次
   AAWO 52 条 Ledger 暴露检索断言和顶层 evolution IDs 契约问题，修正后 50 条通过，最终扩展

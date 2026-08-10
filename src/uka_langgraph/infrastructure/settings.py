@@ -19,7 +19,7 @@ class Settings:
     llm_base_url: str | None
     llm_model: str | None
     llm_api_key: str | None
-    graph_version: str = "0.2.0"
+    graph_version: str = "0.2.1"
 
     @classmethod
     def load(cls, project_root: Path | str | None = None) -> Settings:

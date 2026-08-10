@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b1019" />
+    <meta name="theme-color" content="#f4f8f7" />
     <title>Universal Knowledge Agent · Control Room</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -34,7 +34,7 @@
         </div>
         <div class="hero-orbit" aria-hidden="true">
           <div class="orbit-ring ring-large"></div><div class="orbit-ring ring-small"></div>
-          <div class="orbit-core"><span>UKA</span><small>0.2.0</small></div>
+          <div class="orbit-core"><span>UKA</span><small>0.2.1</small></div>
           <span class="orbit-node node-a">FINANCE</span><span class="orbit-node node-b">MEDICAL</span><span class="orbit-node node-c">SOFTWARE</span>
         </div>
       </section>
@@ -86,6 +86,52 @@
         </aside>
       </section>
 
+      <section class="approval-review hidden" id="approval-drawer" aria-live="polite" aria-labelledby="approval-title">
+        <header class="approval-review-header">
+          <div>
+            <span class="eyebrow">HUMAN GATE · DECISION BRIEF</span>
+            <h2 id="approval-title">正在准备审批信息</h2>
+            <p id="approval-copy">系统正在解析候选经验、适用范围与原始证据。</p>
+          </div>
+          <div class="approval-header-meta">
+            <span class="approval-risk" id="approval-risk">RISK —</span>
+            <span class="mono" id="approval-thread">thread —</span>
+          </div>
+        </header>
+        <div class="approval-loading" id="approval-loading"><i></i><span>正在组装候选、逻辑与证据…</span></div>
+        <div class="approval-review-body hidden" id="approval-review-body">
+          <div class="approval-main-column">
+            <article class="decision-overview" id="approval-overview"></article>
+            <section class="approval-block">
+              <div class="approval-block-heading"><span>DECISION LOGIC</span><small>理解链</small></div>
+              <div class="approval-logic" id="approval-logic"></div>
+            </section>
+            <section class="approval-block" id="approval-relations-block">
+              <div class="approval-block-heading"><span>SOURCE RELATIONS</span><small>原文逻辑关系</small></div>
+              <div class="approval-relations" id="approval-relations"></div>
+            </section>
+          </div>
+          <aside class="approval-side-column">
+            <section class="approval-block compact-block">
+              <div class="approval-block-heading"><span>APPLICABILITY</span><small>适用范围与风险</small></div>
+              <div id="approval-scope"></div>
+            </section>
+            <section class="approval-block compact-block" id="approval-warning-block">
+              <div class="approval-block-heading"><span>REVIEW FLAGS</span><small>审批提示</small></div>
+              <div class="approval-warnings" id="approval-warnings"></div>
+            </section>
+            <section class="approval-block evidence-block">
+              <div class="approval-block-heading"><span>ORIGINAL EVIDENCE</span><small id="approval-evidence-count">0 条原文</small></div>
+              <div class="approval-evidence" id="approval-evidence"></div>
+            </section>
+          </aside>
+        </div>
+        <div class="approval-action-bar">
+          <div><strong>批准后</strong><span>编译并激活为可检索知识</span><strong>拒绝后</strong><span>候选保持非活动且可追溯</span></div>
+          <div class="approval-actions"><button class="reject-button" id="reject-button" type="button">拒绝候选</button><button class="approve-button" id="approve-button" type="button">批准并沉淀 <b>↗</b></button></div>
+        </div>
+      </section>
+
       <section class="library-section" id="knowledge-library">
         <div class="section-heading"><div><span class="section-index">04</span><h2>Knowledge library</h2></div><span class="section-note" id="library-summary">已沉淀的 active knowledge</span></div>
         <article class="panel library-panel">
@@ -94,15 +140,11 @@
             <div class="library-actions"><input id="library-filter" placeholder="筛选领域、主题或正文" aria-label="筛选知识库" /><button class="outline-button" id="refresh-library" type="button">刷新知识库 ↻</button></div>
           </div>
           <div class="knowledge-grid" id="knowledge-grid"><div class="library-empty"><span class="empty-glyph">⌁</span><div><strong>知识库正在加载</strong><p>会按当前 tenant / security scope 展示 active 词条。</p></div></div></div>
+          <button class="library-more-button hidden" id="library-more" type="button"></button>
         </article>
-      </section>
-
-      <section class="approval-drawer hidden" id="approval-drawer">
-        <div><span class="eyebrow">HUMAN GATE · INTERRUPT DETECTED</span><h3>这条知识需要独立审批</h3><p id="approval-copy">系统已保留原始证据，确认后才会进入 active knowledge。</p></div>
-        <div class="approval-meta"><span class="mono" id="approval-thread">thread —</span><div><button class="reject-button" id="reject-button" type="button">拒绝</button><button class="approve-button" id="approve-button" type="button">批准并沉淀 <b>↗</b></button></div></div>
       </section>
       <footer><span>UNIVERSAL KNOWLEDGE AGENT</span><span>LOCAL PREVIEW · EVIDENCE ALWAYS WINS</span></footer>
     </main>
-    <script src="./app.js?v=20260810-experience-v2" defer></script>
+    <script src="./app.js?v=20260810-review-desk-v3" defer></script>
   </body>
 </html>

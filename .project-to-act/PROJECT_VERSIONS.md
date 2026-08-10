@@ -2,10 +2,10 @@
 
 ## 当前版本
 
-- 版本号：`0.2.0`
+- 版本号：`0.2.1`
 - 发布状态：本地功能、真实 LLM Gate、wheel/sdist 构建与洁净安装验证全部通过
 - 兼容性说明：Python 3.11+；LangGraph 1.2；与旧 `uka` 包无运行时兼容或导入关系；
-  Experience v2 使用向后兼容 JSON payload，旧 Knowledge 可读取；0.1.1 及更早的未完成
+  Experience v2 和 `approval_context` 使用向后兼容字段，旧 Knowledge 可读取；0.1.1 及更早的未完成
   checkpoint 不自动迁移到安全 namespace。
 - 最后更新：2026-08-10
 
@@ -17,6 +17,10 @@
 
 ## 版本历史
 
+- `0.2.1`｜2026-08-10｜审批决策可见性与紧凑知识库｜授权响应动态解析候选 Experience、Scope、
+  Evidence/Locator、风险和决策效果；明亮审批决策单、固定动作栏、默认 5 条紧凑知识行、单条展开、
+  分页显示更多与移动端无横向溢出｜用户指出审批信息不足且知识库页面过长｜API 只新增
+  `approval_context`，不改变 checkpoint/SQLite；旧客户端可忽略该字段｜E-020｜G-007 通过。
 - `0.2.0`｜2026-08-10｜文档级上下文 Experience 与受治理自进化｜原文逻辑绑定、综合理解、
   原文对照、扩展 FTS、Knowledge library、EvidencePack Experience、active Knowledge 先验、
   确定性来源谱系与 Evolution candidate Gate｜用户明确要求修复机械拆解并让知识优化后续工作｜

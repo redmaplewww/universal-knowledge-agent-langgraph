@@ -2,9 +2,9 @@
 
 ## 当前验收结论
 
-- 结论：`0.2.0` 的 A-001..A-019/G-006 全部通过
+- 结论：`0.2.1` 的 A-001..A-020/G-007 全部通过
 - 验收范围：独立 LangGraph P0、本地完整产品 Gate、任意领域路由/分类，以及文档级 Experience、
-  原文逻辑对照和受治理自进化 Gate
+  原文逻辑对照、受治理自进化、审批可见性和紧凑知识库 Gate
 - 最后检查：2026-08-10
 - 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；
   GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、
@@ -33,6 +33,7 @@
 | A-017 | 任意领域知识可用稳定类别路由、逐 Claim 正确绑定 Scope、需复核知识失败关闭并保持源标识可检索 | 通过 | AAWO 真实 HTTP 客户旅程、真实 GLM、多格式混合输入与 SQLite 关联审计 | E-013 |
 | A-018 | 纠正内容重新分类且 stale revision 失败；checkpoint 不可跨 tenant/scope 复用；Evidence 不完整失败关闭；Scope/时效过滤不受 limit 掩盖；冲突、Evolution 评测证据与 Parser 超限均受强制 Gate | 通过 | 隔离失败复现、单元/集成、真实 HTTP/GLM、AAWO 纠正驱动回归、数据库完整性审计 | E-014 |
 | A-019 | 完整文档生成自包含 Experience 并绑定原文逻辑/Locator；Knowledge library 与 EvidencePack 可对照原文；active Knowledge 实际参与后续理解；演进只生成不可自动激活的候选；4 领域与跨租户通过 | 通过 | 47 项离线测试、真实 GLM、AAWO HTTP 20 项检查/115 条 Ledger、SQLite 审计、浏览器 UI/检索验收 | E-019 |
+| A-020 | 审批人在决定前可看到候选 Experience、理解链、Scope/risk、原文逻辑、Evidence/Locator/hash 和决策效果；原文不进入 checkpoint；知识库默认 5 条紧凑行、单条展开、可继续加载，桌面/390px 无溢出 | 通过 | API/SDK 合同、checkpoint 约束、真实 GLM 高风险候选、浏览器桌面/移动端交互、全量回归与洁净安装 | E-020 |
 
 ## 证据索引
 
@@ -58,6 +59,7 @@
 | E-017 | 2026-08-09 | `llm-api-config` 注入 `glm`；`doctor --connect`；AAWO `HttpAdapter`/`CustomerSimulationRunner` 真实 HTTP 回归；SQLite 数据库审计；`pytest`/Ruff/账本校验 | 0（领域/对抗 Gate）；1（生命周期 Gate，保留失败） | 领域报告 `CEC6CB5B...88649C1A`；领域 Ledger `6CD29B32...7FF6FF0E`；生命周期报告 `04B192E1...9EAE473C`；生命周期 Ledger `F4E6E04D...1106DB5B`；provider `openai-compatible:glm-5.2` | 62/62 领域与对抗旅程通过；领域 Ledger 310 条、完整性错误 0；生命周期 8 个 AAWO 运行通过，Skill/纠正/stale/Evolution fail-closed/错误合同通过；1 个接口契约失败：线程状态返回 200 但顶层缺少 `thread_id`；离线 44/44、Ruff、project-to-act 校验通过 | `build/aawo-complete-gate-20260809/arbitrary-domain-gate-report.json`、`build/aawo-complete-gate-20260809/evidence/lifecycle-gate-report.json`、对应 SQLite Ledger | 修复 API 响应合同或变更测试合同前 |
 
 | E-019 | 2026-08-10 | F-018 真实上下文 Experience Gate：受管 `glm-5.2`、AAWO HTTP、4 领域、知识复用/演进、SQLite、47 项 pytest、Ruff、Node、浏览器验收与发布包洁净安装 | 0（最终 Gate）；1（首次纠正驱动运行，保留） | 最终报告 `0955737E...05BB437`；首次失败 `3310BE5E...79BD6E91`；中间通过 `A90617CA...258EE2`；wheel `F5E0CEA5...7506F06`；Provider `openai-compatible:glm-5.2` | 最终 20/20、网络安全/财务/机械/教育 4/4、Ledger 115 条且完整性错误 0；单篇 Agent 材料不再产生孤句；原文对照/检索/lineage/evolution candidate fail-closed/跨租户通过；浏览器一键检索 `ANSWERED / 1 EXPERIENCE`、控制台错误 0；0.2.0 wheel/sdist 构建、洁净 Python 3.11 安装及 49 个依赖一致性通过 | `docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`、`build/contextual-experience-gate-20260810d/evidence/`、`dist/universal_knowledge_agent_langgraph-0.2.0-py3-none-any.whl` | Provider/Experience 合同/检索/演进或前端变更前 |
+| E-020 | 2026-08-10 | F-019 审批可见性与紧凑知识库：`llm-api-config` Status/Inject、真实 `glm-5.2` 摄取、浏览器桌面/390px、API/SDK 合同、47 项 pytest、Ruff/Node/compileall、wheel/sdist 与洁净安装 | 0 | wheel `FA04030F...552269`；Provider `openai-compatible:glm-5.2`；graph/API `0.2.1` | 真实高风险生产补丁候选完整展示标题/概览/六段理解/3 条逻辑/Scope/risk/原文/hash，拒绝后保持非 active；知识库默认 5/7、同时只展开 1 条、显示更多至 7；390px 无横向溢出；控制台错误 0；Python 3.11 洁净安装和 49 个依赖一致性通过 | `src/uka_langgraph/orchestration/runtime.py`、`frontend/`、`docs/FRONTEND_PREVIEW.md`、`dist/universal_knowledge_agent_langgraph-0.2.1-py3-none-any.whl` | 审批响应/前端/版本变更前 |
 
 ## Gate 记录
 
@@ -69,9 +71,13 @@
 | G-004 | 2026-08-04 | G-003 纠正回归 Gate | `0.1.1` | 通过 | E-013 | 无；保留 G-003 原失败事实，不把代表性领域 Gate 解释为所有知识的数学穷举或专家认证 |
 | G-005 | 2026-08-04 | 深层完整性与隔离修复 Gate | `0.1.2` | 通过 | E-014 | 无；保留两次真实 Gate 失败记录，且不豁免生产 IAM/容量/专家认证 |
 | G-006 | 2026-08-10 | 上下文 Experience、原文逻辑与受治理自进化 Gate | `0.2.0` | 通过 | E-019 | 无；保留首次 AAWO 失败，不把 4 领域代表性 Gate 宣称为任意领域数学穷举或专家认证 |
+| G-007 | 2026-08-10 | 审批决策可见性与紧凑知识库 Gate | `0.2.1` | 通过 | E-020 | 无；只确认本地授权响应和浏览器可用性，不豁免生产 IAM、审计策略或外部部署 Gate |
 
 ## 验收记录
 
+- 2026-08-10｜审批决策单与紧凑知识库｜E-020｜真实 GLM 高风险候选的模型理解、Scope/risk、
+  原文关系、证据和决策效果均在批准前可见；测试候选被拒绝且未激活；5/7 紧凑列表、单条展开、
+  390px、控制台、47/47、构建和洁净安装通过｜A-020/G-007 通过。
 - 2026-08-10｜上下文 Experience 与自进化纠正回归｜E-019｜首次 AAWO 运行保留
   `review_required` 断言误配和顶层 `evolution_ids` 契约失败；修正后扩展至 4 领域，最终 20/20、
   Ledger 115 条、完整性错误 0，47/47 与浏览器验收通过｜A-019/G-006 通过。
@@ -95,6 +101,15 @@
 - The frontend shows five active entries in the isolated preview, including domain, content summary, subjects/tasks, confidence, revision, and evidence count.
 - A card's “用于检索” action fills the query and domain; browser verification returned an `ANSWERED` evidence pack for the selected Software Engineering entry.
 - `actor_id`/`control-room` semantics are explained in the UI and `docs/FRONTEND_PREVIEW.md`.
+
+## Approval decision brief and compact library (E-020)
+
+- Interrupted ingest and thread status responses dynamically include tenant/scope-protected
+  `approval_context`; checkpoint State continues to contain references rather than source text.
+- The decision brief exposes the candidate synthesis, six-part logic, source relations, Scope/risk,
+  preconditions/exclusions, caveats, original Evidence/Locator/hash, and decision effects.
+- The active library renders five compact rows by default, closes the previous row when another is
+  opened, and exposes show-more/collapse controls; 390 px has no horizontal overflow.
 - 2026-08-05｜公开仓库与手册交付｜E-016｜远端仓库为 PUBLIC，main 已跟踪远端，README、用户手册、运维手册和架构文档可访问；凭据扫描无匹配，运行目录未上传；CI workflow 受 GitHub OAuth scope 限制未提交｜公开发布完成；Actions 待重新授权后另行启用。
 - 2026-08-05｜五领域真实 LLM 诊断｜E-015｜网络安全、化学、土木工程、环境、心理学的分类/证据/作用域检索/隔离核心项全部通过；高风险失败关闭正常；未限定领域时目标召回 5/5，但结果纯度不足，故只登记诊断证据，不新增或提升生产 Gate｜A-001..A-018/G-005 状态不变。
 - 2026-08-04｜深层完整性与隔离纠正回归｜E-014｜首次 59/62 与二次 60/61 失败均保留并驱动冲突规则、revision 幂等与理解缓存修复；最终真实主旅程及全部扩展回归通过，44 项离线测试和 0.1.2 洁净安装通过｜A-018/G-005 通过。

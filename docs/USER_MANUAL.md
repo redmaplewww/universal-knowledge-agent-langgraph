@@ -102,6 +102,12 @@ Provider 合同失败、未知二进制、低置信度、高风险或 Scope 不�
 
 默认摄取会进入 interrupt。使用相同 tenant/scope 恢复：
 
+HTTP 摄取响应和线程状态会在中断期间提供 `approval_context`。它包含候选 Experience 的标题、
+概览、背景、问题、机制、行动、结果、理解依据、置信度和演进谱系，以及解析后的 Scope 风险、
+前提/排除项、未知项、原文逻辑关系、Evidence Locator、原文摘录和内容哈希。前端把这些信息组成
+审批决策单；审批人应先对照原文和适用边界，再批准或拒绝。原文由受 tenant/scope 保护的仓储在
+响应时动态解析，不会写进 LangGraph checkpoint。
+
 ```powershell
 uv run uka-lg --project-root . resume `
   --thread-id ingest-001 `
@@ -141,7 +147,8 @@ GET /v1/knowledge?tenant_id=demo&security_scope_id=private&limit=100
 
 每个词条会返回 Experience 字段、领域、前提/排除项、原文证据、完整性状态以及 learning /
 evolution 谱系。前端控制台的 **Knowledge library** 可以按领域、主题、理解内容或原文筛选，
-点击“用这条经验检索”会自动填入来源编号和正确领域。
+点击“用这条经验检索”会自动填入来源编号和正确领域。为控制页面长度，默认只显示前 5 条紧凑
+词条，一次只展开一条完整经验；“显示更多”用于继续浏览，筛选仍会覆盖当前作用域的全部词条。
 
 显式领域检索：
 
