@@ -2,7 +2,7 @@
 
 ## 1. 运行边界
 
-`0.2.1` 是本地持久化产品：SQLite 领域库、SQLite checkpointer 和本地内容寻址对象库组成
+`0.3.1` 是本地持久化产品：SQLite 领域库、SQLite checkpointer 和本地内容寻址对象库组成
 可恢复链路。它适合单机开发、评测和受控内部使用，不等于生产集群部署。
 
 生产化前必须明确：外部 IAM/RBAC、租户解析、PostgreSQL/对象存储、密钥托管、备份恢复、
@@ -87,9 +87,12 @@ uv run ruff check .
 uv build
 ```
 
-`0.1.1`/`0.1.2`/`0.2.0`/`0.2.1` 的领域 revision、Evidence 和 active Registry 设计为兼容；`0.2.0`
+`0.1.1`/`0.1.2`/`0.2.0`/`0.2.1`/`0.3.0`/`0.3.1` 的领域 revision、Evidence 和 active Registry 设计为兼容；`0.2.0`
 新增的 Experience 与 learning 字段使用可选 JSON payload，旧 Knowledge 仍可读取但不会伪造
-缺失的逻辑关系或原文摘录；`0.2.1` 只新增动态 `approval_context` 响应，不需要数据库迁移。
+缺失的逻辑关系或原文摘录；`0.2.1` 只新增动态 `approval_context` 响应；`0.3.0` 新增可选的
+`knowledge_gap` revision 与研究 Evidence，不需要破坏性数据库迁移。
+`0.3.1` 只新增专用人工补证接口、可选请求字段和 Provider 输出语言校验；既有 Gap 可继续读取，
+历史非中文展示项可以通过追加 revision 本地化，不应覆写或删除旧 revision。
 未完成的旧
 checkpoint 不会自动迁移到新的 tenant/scope 安全 namespace，升级前应完成、拒绝或执行显式
 运维迁移。
@@ -104,7 +107,8 @@ checkpoint 不会自动迁移到新的 tenant/scope 安全 namespace，升级前
 - 可直接恢复秘密的环境变量。
 
 生产建议额外记录并告警：Provider 错误率、结构化合同失败率、`review_required` 比例、
-`unknown` 原因分布、Evidence 完整性失败、重复 Receipt、checkpoint 恢复失败、请求延迟、
+`unknown`/`abstained` 原因分布、开放 Gap 数、`research_exhausted`/`research_unavailable` 比例、
+Gap 平均未解决时长、Evidence 完整性失败、重复 Receipt、checkpoint 恢复失败、请求延迟、
 Token/成本和队列/配额使用量。
 
 ## 8. 安全运行规则
@@ -115,6 +119,10 @@ Token/成本和队列/配额使用量。
 - Skill 默认无网络、无权限、无副作用；生产执行能力必须单独隔离。
 - Evolution 必须绑定不可变评测证据；候选不能自报指标后自动激活。
 - 对外部输入执行大小、类型、编码和解析深度限制。
+- `UKA_WEB_RESEARCH=0` 可完全禁用公网研究；`UKA_WEB_SEARCH_COUNT`（1..10）、
+  `UKA_WEB_SEARCH_MAX_QUERIES`（1..8）和 `UKA_WEB_SEARCH_TIMEOUT_SECONDS`（3..60）限制单次外发。
+- `confidential`、`restricted`、`secret`、`prohibited` 分类不得外发查询；确认事件或 Gap 轨迹中
+  记录的是 `classification_egress_blocked`，而不是静默跳过。
 
 ## 9. 发布检查清单
 
@@ -134,6 +142,8 @@ uv build
 - 验证 ingest → interrupt → resume → retrieve；
 - 验证跨租户查询返回 `unknown`；
 - 验证高风险知识返回 `review_required`；
+- 验证模糊经验返回 `abstained`、开放 Gap 可检索、补证候选拒绝不关闭 Gap、批准后精确关闭；
+- 验证机密分类材料不会调用外部 Web Search；
 - 记录版本、命令退出状态、报告路径和 hash。
 
 ## 10. 生产替换边界

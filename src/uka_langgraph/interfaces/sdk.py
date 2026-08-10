@@ -80,6 +80,56 @@ class UniversalKnowledgeAgent:
             )
         return _public(result)
 
+    def supplement_knowledge_gap(
+        self,
+        gap_id: str,
+        evidence_text: str,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        actor_id: str = "sdk-user",
+        classification: str = "internal",
+        source_note: str | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit human evidence for one open gap without bypassing approval."""
+        normalized_gap_id = gap_id.strip()
+        if not normalized_gap_id:
+            raise ValueError("gap_id cannot be empty")
+        if not evidence_text.strip():
+            raise ValueError("evidence_text cannot be empty")
+        note = (source_note or "").strip()
+        supplement = evidence_text.strip()
+        if note:
+            supplement = f"{supplement}\n\n补证来源说明：{note}"
+        with AgentRuntime(self.settings) as runtime:
+            security = SecurityScope(
+                tenant_id, security_scope_id, classification
+            )
+            gap = runtime.services.repository.get_revision(
+                security, "knowledge_gap", normalized_gap_id
+            )
+            if gap is None or gap.status == "resolved":
+                raise LookupError(
+                    f"open knowledge gap not found: {normalized_gap_id}"
+                )
+            reference = runtime.stage_text(supplement)
+            result = runtime.invoke(
+                intent="ingest",
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                actor_id=actor_id,
+                classification=classification,
+                input_refs=[reference],
+                payload={
+                    "auto_approve": False,
+                    "target_gap_ids": [normalized_gap_id],
+                    "supplement_mode": "human_evidence",
+                },
+                thread_id=thread_id,
+            )
+        return _public(result)
+
     def retrieve(
         self,
         query: str,
@@ -255,6 +305,92 @@ class UniversalKnowledgeAgent:
                             if evolution is not None
                             else None
                         ),
+                        "created_at": revision.created_at,
+                    }
+                )
+            return _public(entries)
+
+    def list_knowledge_gaps(
+        self,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List unresolved, tenant-scoped knowledge gaps and research lineage."""
+        with AgentRuntime(self.settings) as runtime:
+            security = SecurityScope(tenant_id, security_scope_id)
+            revisions = runtime.services.repository.list_open_gaps(security, limit)
+            entries: list[dict[str, Any]] = []
+            for revision in revisions:
+                scope_ids = [
+                    str(item) for item in revision.payload.get("scope_ids", [])
+                ]
+                scopes = [
+                    runtime.services.repository.get_revision(
+                        security, "scope", scope_id
+                    )
+                    for scope_id in scope_ids
+                ]
+                domain_ids = sorted(
+                    {
+                        str(domain)
+                        for scope in scopes
+                        if scope is not None
+                        for domain in scope.payload.get(
+                            "domain_ids", scope.payload.get("domain", [])
+                        )
+                    }
+                )
+                entries.append(
+                    {
+                        "gap_id": revision.object_id,
+                        "revision": revision.revision,
+                        "status": revision.status,
+                        "classification": revision.security.classification,
+                        "question": str(revision.payload.get("question", "")),
+                        "reason_unresolved": str(
+                            revision.payload.get("reason_unresolved", "")
+                        ),
+                        "possible_directions": [
+                            str(item)
+                            for item in revision.payload.get(
+                                "possible_directions", []
+                            )
+                        ],
+                        "missing_evidence": [
+                            str(item)
+                            for item in revision.payload.get("missing_evidence", [])
+                        ],
+                        "research_queries": [
+                            str(item)
+                            for item in revision.payload.get("research_queries", [])
+                        ],
+                        "linking_keys": [
+                            str(item)
+                            for item in revision.payload.get("linking_keys", [])
+                        ],
+                        "confidence": float(
+                            revision.payload.get("confidence", 0.0)
+                        ),
+                        "research_status": str(
+                            revision.payload.get("research_status", revision.status)
+                        ),
+                        "research_attempts": list(
+                            revision.payload.get("research_attempts", [])
+                        ),
+                        "research_evidence_ids": list(
+                            revision.payload.get("research_evidence_ids", [])
+                        ),
+                        "related_knowledge_ids": list(
+                            revision.payload.get("related_knowledge_ids", [])
+                        ),
+                        "resolution_candidate_ids": list(
+                            revision.payload.get("resolution_candidate_ids", [])
+                        ),
+                        "scope_ids": scope_ids,
+                        "domain_ids": domain_ids,
+                        "evidence_ids": list(revision.evidence_ids),
                         "created_at": revision.created_at,
                     }
                 )

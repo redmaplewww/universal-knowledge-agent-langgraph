@@ -27,6 +27,13 @@ class IngestBody(SecurityRequest):
     request_id: str | None = None
 
 
+class GapSupplementBody(SecurityRequest):
+    evidence_text: str = Field(min_length=1, max_length=1_000_000)
+    source_note: str | None = Field(default=None, max_length=2_000)
+    classification: str = "internal"
+    thread_id: str | None = None
+
+
 class RetrieveBody(SecurityRequest):
     query: str = Field(min_length=1, max_length=8_000)
     query_scope: dict[str, Any] = Field(default_factory=dict)
@@ -69,7 +76,7 @@ def create_app(
     agent = UniversalKnowledgeAgent(settings, project_root=project_root)
     app = FastAPI(
         title="Universal Knowledge Agent",
-        version="0.2.1",
+        version="0.3.1",
         description="Evidence-first local LangGraph knowledge agent API",
     )
     app.add_middleware(
@@ -103,6 +110,22 @@ def create_app(
             request_id=body.request_id,
         )
 
+    @app.post("/v1/knowledge-gaps/{gap_id}/supplements")
+    def supplement_knowledge_gap(
+        gap_id: str, body: GapSupplementBody
+    ) -> dict[str, Any]:
+        return _call(
+            agent.supplement_knowledge_gap,
+            gap_id,
+            body.evidence_text,
+            tenant_id=body.tenant_id,
+            security_scope_id=body.security_scope_id,
+            actor_id=body.actor_id,
+            classification=body.classification,
+            source_note=body.source_note,
+            thread_id=body.thread_id,
+        )
+
     @app.post("/v1/retrieve")
     def retrieve(body: RetrieveBody) -> dict[str, Any]:
         return _call(
@@ -126,6 +149,17 @@ def create_app(
             security_scope_id=security_scope_id,
             limit=limit,
             domain=domain,
+        )
+
+    @app.get("/v1/knowledge-gaps")
+    def list_knowledge_gaps(
+        tenant_id: str, security_scope_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return _call(
+            agent.list_knowledge_gaps,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
         )
 
     @app.post("/v1/corrections")

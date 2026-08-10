@@ -120,14 +120,19 @@ def _understand_one(
             request_id=state["request_id"],
             evidence_ids=state["evidence_ids"],
             security=security_from_state(state),
+            target_gap_ids=[
+                str(gap_id)
+                for gap_id in state.get("payload", {}).get("target_gap_ids", [])
+            ],
         )
     except Exception as exc:  # Provider exceptions are converted to a redacted graph error.
-        error_code = getattr(exc, "code", type(exc).__name__)
+        error_code = getattr(exc, "code", None) or type(exc).__name__
         return {
             "errors": [f"provider_error:{error_code}"],
         }
     return {
         "candidate_ids": result["candidate_ids"],
+        "knowledge_gap_ids": result.get("knowledge_gap_ids", []),
         "scope_ids": result["scope_ids"],
         "warnings": result["warnings"],
         "receipt_ids": result["receipt_ids"],
@@ -148,6 +153,7 @@ def _evaluate(
         security=security_from_state(state),
         candidate_ids=state.get("candidate_ids", []),
         scope_ids=state.get("scope_ids", []),
+        gap_ids=state.get("knowledge_gap_ids", []),
     )
     payload = state.get("payload", {})
     can_auto_approve = (
@@ -174,6 +180,7 @@ def _review(state: WorkflowState) -> dict[str, Any]:
         subject="knowledge_activation",
         details={
             "candidate_ids": state.get("candidate_ids", []),
+            "knowledge_gap_ids": state.get("knowledge_gap_ids", []),
             "scope_ids": state.get("scope_ids", []),
             "evidence_ids": state.get("evidence_ids", []),
             "warnings": state.get("warnings", []),
@@ -205,10 +212,20 @@ def _compile(
 
 
 def _hold(state: WorkflowState) -> dict[str, Any]:
+    gap_ids = state.get("knowledge_gap_ids", [])
+    gap_preserved = bool(gap_ids) and not state.get("errors")
     return {
-        "status": "held" if not state.get("errors") else "rejected",
+        "status": (
+            "abstained"
+            if gap_preserved
+            else ("held" if not state.get("errors") else "rejected")
+        ),
         "response": {
-            "reason": "fail_closed",
+            "answer": "unknown" if gap_preserved else None,
+            "reason": (
+                "knowledge_gap_preserved" if gap_preserved else "fail_closed"
+            ),
+            "knowledge_gap_ids": gap_ids,
             "errors": state.get("errors", []),
             "warnings": state.get("warnings", []),
         },

@@ -14,6 +14,8 @@
 | AAWO 真实 LLM 完整回归 | 部分通过 | Codex | 领域/对抗 62/62 通过；生命周期发现线程状态响应契约缺口 | E-017 | 2026-08-09 |
 | 上下文 Experience、原文对照与受治理自进化 | 已完成 | Codex | F-018 与 A-019/G-006 通过，前端展示真实 4 领域知识 | E-019 | 2026-08-10 |
 | 审批决策单与紧凑知识库 | 已完成 | Codex | F-019 与 A-020/G-007 通过；真实候选、桌面/移动端和发布包验证完成 | E-020 | 2026-08-10 |
+| 认识论拒答与 Knowledge Gap 补证闭环 | 已完成 | Codex | F-020 与 A-021/G-008 通过；真实 GLM/Web Search/AAWO、隔离、安全外发和发布包验证完成 | E-021 | 2026-08-10 |
+| 精确人工补证与中文一致性修复 | 已完成 | Codex | F-021 与 A-022/G-009 通过；真实 GLM/HTTP、桌面/390px、全量回归和 0.3.1 洁净安装完成 | E-022 | 2026-08-11 |
 
 ## Frontend preview update (2026-08-09)
 
@@ -46,6 +48,28 @@
   evidence; the candidate was rejected and remained inactive. Desktop and 390 px responsive checks,
   browser console, 47 tests, Ruff, build, and clean install passed.
 
+## Epistemic abstention and Knowledge Gap lifecycle (2026-08-10)
+
+- Added versioned Knowledge Gap candidates/revisions, bounded Web Search observations, LLM gap
+  reassessment, explicit `abstained` and `answered_with_gaps` retrieval contracts, and exact
+  `resolves_gap_ids` activation-time closure.
+- Added `GET /v1/knowledge-gaps`, SDK listing support, and a compact three-row frontend gap ledger
+  with research history, missing evidence, possible directions, linking keys, and one-click lookup.
+- Three real AAWO rounds preserved two failing reports and ended with 3/3 ambiguous refusals,
+  3/3 gap retrieval refusals, 1/1 core-answer retention, and 1/1 later-evidence linking.
+- Confidential and higher classifications preserve the Gap without making an external search call.
+
+## Manual Gap supplement and Chinese consistency (2026-08-11)
+
+- Added a dedicated SDK/API and inline form that bind human evidence to one exact open Gap ID.
+- Preserved the approval contract: insufficient evidence appends a Gap revision, rejection leaves it open,
+  and only approved activation resolves it.
+- Added source-language instructions, Chinese-field detection, a constrained repair pass, and fail-closed
+  behavior for persistent language mismatch; source codes and quoted proper terms remain unchanged.
+- Localized the legacy English demo Gap by appending revision 2 without deleting its research lineage.
+- Real `glm-5.2` HTTP verification, 53 tests, Ruff, Node, compileall, desktop/390 px browser checks,
+  wheel/sdist build, and a clean Python 3.11 install with 49 compatible packages passed.
+
 ## 阻塞项
 
 | 阻塞 | 影响 | 解除条件 | 状态 |
@@ -64,6 +88,15 @@
 
 ## 进度历史
 
+- 2026-08-11｜完成 `0.3.1` F-021｜新增精确人工补证入口和中文输出合同；真实 `glm-5.2`/HTTP
+  中文旅程成功生成 Gap、补证候选、审批并关闭同一 Gap；桌面和 390px 无横向溢出、控制台错误 0；
+  53/53、Ruff、Node、编译、wheel/sdist、Python 3.11 洁净安装和 49 个依赖一致性通过｜
+  E-022｜A-022/G-009。
+
+- 2026-08-10｜完成 `0.3.0` F-020｜新增认识论拒答、Knowledge Gap 生命周期、有限真实网络研究、
+  补证精确回链和前端缺口账本；真实 AAWO 前两轮分别保留 9/3 项失败，第三轮四项核心比率均为
+  1.0；51/51、Ruff、Node、编译、wheel/sdist、Python 3.11 洁净安装和 49 个依赖一致性通过｜
+  E-021｜A-021/G-008。
 - 2026-08-10｜完成 `0.2.1` F-019｜新增动态 `approval_context` 与完整审批决策单；真实 GLM 候选
   展示候选理解、六段逻辑、Scope/risk、原文/Locator/hash 和批准/拒绝效果后被拒绝；知识库默认
   5/7 条、单条展开、显示更多与 390px 无横向溢出；47/47、Ruff、Node、编译、wheel/sdist、

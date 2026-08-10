@@ -20,6 +20,7 @@ class WorkflowState(TypedDict, total=False):
     evidence_ids: Annotated[list[str], merge_unique]
     fragment_ids: Annotated[list[str], merge_unique]
     candidate_ids: Annotated[list[str], merge_unique]
+    knowledge_gap_ids: Annotated[list[str], merge_unique]
     scope_ids: Annotated[list[str], merge_unique]
     knowledge_ids: Annotated[list[str], merge_unique]
     skill_ids: Annotated[list[str], merge_unique]

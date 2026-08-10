@@ -9,6 +9,7 @@ from uka_langgraph.domain.models import (
     ParsedFragment,
     SecurityScope,
     UnderstandingResult,
+    WebSearchBatch,
 )
 
 
@@ -61,6 +62,14 @@ class RepositoryPort(Protocol):
         self, security: SecurityScope, query: str, limit: int
     ) -> list[DomainRevision]: ...
 
+    def list_open_gaps(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]: ...
+
+    def search_open_gaps(
+        self, security: SecurityScope, query: str, limit: int
+    ) -> list[DomainRevision]: ...
+
     def count(self, object_type: str, security: SecurityScope | None = None) -> int: ...
 
     def record_event(
@@ -94,9 +103,25 @@ class UnderstandingPort(Protocol):
         text: str,
         evidence_id: str,
         prior_knowledge: tuple[dict[str, Any], ...] = (),
+        prior_gaps: tuple[dict[str, Any], ...] = (),
+    ) -> UnderstandingResult: ...
+
+    def reassess_gaps(
+        self,
+        text: str,
+        evidence_id: str,
+        gaps: tuple[dict[str, Any], ...],
+        research_observations: tuple[dict[str, Any], ...],
+        prior_knowledge: tuple[dict[str, Any], ...] = (),
     ) -> UnderstandingResult: ...
 
     def check_connection(self) -> dict[str, object]: ...
+
+
+class WebSearchPort(Protocol):
+    revision: str
+
+    def search(self, query: str, *, count: int = 5) -> WebSearchBatch: ...
 
 
 class ParserPort(Protocol):

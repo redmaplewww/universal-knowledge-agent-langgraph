@@ -1147,7 +1147,7 @@ wheels = [
 
 [[package]]
 name = "universal-knowledge-agent-langgraph"
-version = "0.2.1"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

@@ -5,7 +5,7 @@
 摄取、检索、纠正、Skill 和受治理 Evolution 生命周期。
 
 仓库名：`universal-knowledge-agent-langgraph`  
-当前版本：`0.2.1`
+当前版本：`0.3.1`
 运行时：Python 3.11+、LangGraph 1.2.10、SQLite、FastAPI
 
 > 本项目是独立实现，不导入、不依赖同级旧 `universal-knowledge-agent` 或 AAWO 运行时。
@@ -27,6 +27,9 @@
 - 编译受限的 advisory Skill，并对 Evolution 执行 offline → shadow → canary → 人工审批。
 - 新材料会检索相关 active knowledge 作为受限理解上下文；强化、修正或矛盾只生成带谱系的
   Evolution candidate，永不未经 Gate 自动替换旧策略。
+- 当术语、上下文或因果链在现有证据和有限网络检索后仍无法可靠理解时，返回 `abstained`
+  而不是猜测，并把问题、缺失证据、可能方向、检索记录和链接键保存为版本化 Knowledge Gap。
+  后续材料可显式引用并关闭对应 Gap；只有关联候选获批激活后才会真正关闭。
 - 通过 CLI、Python SDK 和本地 FastAPI HTTP API 使用。
 
 ## 快速开始
@@ -85,7 +88,8 @@ uv run uka-lg --project-root . retrieve `
   --scope private
 ```
 
-检索结果可能是 `answered`、`review_required` 或 `unknown`。没有领域作用域时，当前版本
+检索结果可能是 `answered`、`answered_with_gaps`、`abstained`、`review_required` 或 `unknown`。
+`abstained` 会返回待补问题、缺失证据和可能方向；没有领域作用域时，当前版本
 执行受控的宽检索，不保证自动推断唯一领域；生产使用建议显式传入 `--domain`，详见
 [用户手册](docs/USER_MANUAL.md)。
 
@@ -147,6 +151,8 @@ OpenAPI/Swagger：`http://127.0.0.1:8765/docs`
 | `POST` | `/v1/ingest` | 摄取文本并可能返回带 `approval_context` 的审批中断 |
 | `POST` | `/v1/retrieve` | 受 tenant/scope/Scope 过滤的 EvidencePack 检索 |
 | `GET` | `/v1/knowledge` | 展示 active Experience、原文对照、逻辑关系和演进谱系 |
+| `GET` | `/v1/knowledge-gaps` | 展示当前 tenant/scope 中仍待补证的 Knowledge Gap 与检索轨迹 |
+| `POST` | `/v1/knowledge-gaps/{gap_id}/supplements` | 对准一个开放缺口提交人工补证，并生成必须审批的候选 |
 | `POST` | `/v1/corrections` | 创建纠正版本 |
 | `POST` | `/v1/skills` | 创建 advisory Skill |
 | `POST` | `/v1/evolution` | 创建 Evolution 提案 |
@@ -179,6 +185,12 @@ interfaces -> orchestration -> application -> domain
 - 原文先进入本地对象库；LangGraph checkpoint 不保存原文、密钥或完整模型响应。
 - Evidence 哈希、父 Evidence、Locator 和 active revision 会在返回前校验。
 - 高风险、低置信度、冲突和复核失败结果保持 `review_required`/`unknown`。
+- `confidential`、`restricted`、`secret`、`prohibited` 分类的材料禁止外发网络检索；Gap 保留为
+  `research_unavailable`，等待授权的本地或后续证据补充。
+- “待补知识”支持直接展开人工补证表单。补证会携带精确 `gap_id` 重新理解，证据仍不足时追加
+  Gap revision 而不伪造结论；形成候选时必须先展示完整审批决策单，批准后才关闭目标缺口。
+- 中文来源要求模型生成的标题、问题、原因、方向、概览等自然语言字段保持简体中文；来源中的
+  产品名、代码、标识符和原文术语保留原样。语言不一致会触发一次受约束修复，仍不合格则失败关闭。
 - 当前 API 的 tenant/actor 是调用方输入，尚未替代生产 IAM；接入生产前必须由网关或服务端
   身份系统确定主体、租户、RBAC、配额和审计策略。
 
@@ -191,10 +203,16 @@ uv run python -m compileall -q src
 uv build
 ```
 
-本地验收已覆盖 47 项离线测试；真实 `glm-5.2` 的 AAWO HTTP Gate 产生 115 条完整 Ledger
+本地验收已覆盖 53 项离线测试；真实 `glm-5.2` 与真实 Web Search 的 Knowledge Gap AAWO HTTP
+Gate 在工业校准、口述史、农学和软件工程代表性旅程中达到：模糊经验拒答 3/3、缺口检索拒答
+3/3、已有核心答案保留 1/1、后续证据精确回链 1/1。此前上下文 Experience Gate 产生 115 条完整 Ledger
 记录，验证了上下文综合、原文逻辑、原文对照、检索、知识复用、Evolution 不自动激活、
 跨租户隔离，以及网络安全、财务、机械工程、教育 4 个领域。结果见
 [上下文经验与自进化报告](docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md)。
+拒答与补证闭环见
+[认识论拒答与 Knowledge Gap 报告](docs/EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md)。
+人工补证中文旅程还验证了中文缺口、精确目标绑定、审批后关闭与桌面/390px 页面可用性，见
+[人工补证与中文一致性修复报告](docs/MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md)。
 
 ## 文档导航
 
@@ -205,10 +223,12 @@ uv build
 - [任意领域修复报告](docs/ARBITRARY_DOMAIN_ROUTING_FIX_REPORT_2026-08-04.md)。
 - [深层完整性修复报告](docs/DEEP_INTEGRITY_FIX_REPORT_2026-08-04.md)。
 - [上下文经验与自进化报告](docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md)。
+- [认识论拒答与 Knowledge Gap 报告](docs/EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md)。
+- [人工补证与中文一致性修复报告](docs/MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md)。
 
 ## 版本与授权说明
 
-当前版本是 `0.2.1`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
+当前版本是 `0.3.1`。`pyproject.toml` 使用 `LicenseRef-Proprietary`；本仓库可公开查看，
 但当前没有授予开源再分发、商用或修改授权。若需要以 MIT、Apache-2.0 或其他许可证公开，
 请先明确授权后再补充 LICENSE 文件。
 

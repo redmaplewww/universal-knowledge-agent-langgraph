@@ -81,6 +81,7 @@ class ClaimCandidate:
     source_excerpts: tuple[str, ...] = ()
     logical_relations: tuple[LogicalRelation, ...] = ()
     derived_from_knowledge_ids: tuple[str, ...] = ()
+    resolves_gap_ids: tuple[str, ...] = ()
     knowledge_delta: str = "new"
     schema_version: int = 1
 
@@ -163,7 +164,52 @@ class OperationReceipt:
 class UnderstandingResult:
     claims: tuple[ClaimCandidate, ...]
     scopes: tuple[ApplicabilityScope, ...]
+    gaps: tuple[KnowledgeGapCandidate, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeGapCandidate:
+    gap_id: str
+    question: str
+    reason_unresolved: str
+    possible_directions: tuple[str, ...]
+    missing_evidence: tuple[str, ...]
+    research_queries: tuple[str, ...]
+    linking_keys: tuple[str, ...]
+    confidence: float
+    source_excerpts: tuple[str, ...] = ()
+    related_knowledge_ids: tuple[str, ...] = ()
+    research_status: str = "pending"
+    research_attempts: tuple[dict[str, Any], ...] = ()
+    research_evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.question.strip():
+            raise ValueError("knowledge gap question is required")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class WebSearchObservation:
+    observation_id: str
+    query: str
+    title: str
+    url: str
+    snippet: str
+    media: str = ""
+    published_at: str | None = None
+    rank: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class WebSearchBatch:
+    query: str
+    status: str
+    observations: tuple[WebSearchObservation, ...] = ()
+    provider_revision: str = "disabled"
+    error_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,3 +242,4 @@ class EvidencePack:
     items: tuple[EvidencePackItem, ...]
     conflicts: tuple[dict[str, Any], ...] = ()
     unknowns: tuple[str, ...] = ()
+    knowledge_gaps: tuple[dict[str, Any], ...] = ()

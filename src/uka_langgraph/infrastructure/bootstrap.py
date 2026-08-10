@@ -13,6 +13,12 @@ from uka_langgraph.infrastructure.providers import (
     DeterministicUnderstandingProvider,
     OpenAICompatibleUnderstandingProvider,
 )
+from uka_langgraph.infrastructure.research import (
+    DisabledWebSearchProvider,
+    DuckDuckGoHTMLSearchProvider,
+    FallbackWebSearchProvider,
+    ZhipuWebSearchProvider,
+)
 from uka_langgraph.infrastructure.settings import Settings
 from uka_langgraph.infrastructure.sqlite_repository import SQLiteRepository
 
@@ -41,7 +47,32 @@ def build_services(settings: Settings) -> ServiceContainer:
         )
     else:
         understanding = DeterministicUnderstandingProvider()
-    ingestion = IngestionService(repository, objects, understanding, parsers)
+    research = DisabledWebSearchProvider()
+    if settings.web_research_enabled:
+        research = DuckDuckGoHTMLSearchProvider(
+            timeout_seconds=settings.web_search_timeout_seconds
+        )
+    if (
+        settings.web_research_enabled
+        and settings.web_search_url
+        and settings.llm_api_key
+    ):
+        primary_research = ZhipuWebSearchProvider(
+            api_key=settings.llm_api_key,
+            endpoint=settings.web_search_url,
+            engine=settings.web_search_engine,
+            timeout_seconds=settings.web_search_timeout_seconds,
+        )
+        research = FallbackWebSearchProvider(primary_research, research)
+    ingestion = IngestionService(
+        repository,
+        objects,
+        understanding,
+        parsers,
+        research,
+        settings.web_search_count,
+        settings.web_search_max_queries,
+    )
     return ServiceContainer(
         repository=repository,
         objects=objects,
