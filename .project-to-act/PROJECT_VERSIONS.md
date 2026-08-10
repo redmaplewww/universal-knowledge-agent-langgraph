@@ -2,12 +2,12 @@
 
 ## 当前版本
 
-- 版本号：`0.3.0`
+- 版本号：`0.3.1`
 - 发布状态：本地功能、真实 LLM Gate、wheel/sdist 构建与洁净安装验证全部通过
 - 兼容性说明：Python 3.11+；LangGraph 1.2；与旧 `uka` 包无运行时兼容或导入关系；
-  Experience v2、`approval_context` 和 Knowledge Gap 使用向后兼容字段，旧 Knowledge 可读取；0.1.1 及更早的未完成
+  Experience v2、`approval_context`、Knowledge Gap 与人工补证请求使用向后兼容字段，旧 Knowledge 可读取；0.1.1 及更早的未完成
   checkpoint 不自动迁移到安全 namespace。
-- 最后更新：2026-08-10
+- 最后更新：2026-08-11
 
 ## 下一版本计划
 
@@ -16,6 +16,11 @@
 - 进入条件：用户明确生产环境、数据边界、SLO 和部署目标；不得把本地 Gate 等同于生产认证。
 
 ## 版本历史
+
+- `0.3.1`｜2026-08-11｜精确人工补证与中文一致性修复｜专用 Gap 补证 API/SDK/内联表单、
+  target Gap 上下文优先注入、未解决项追加 revision、审批后关闭、来源语言提示、中文字段检测与
+  受限修复、中文领域/状态展示｜用户指出缺口无法人工填补且中文对话出现英文缺口｜仅新增接口和
+  可选 payload，不需要数据库破坏性迁移；旧英文演示 Gap 以追加 revision 本地化｜E-022｜G-009 通过。
 
 - `0.3.0`｜2026-08-10｜认识论拒答与补证版本｜Knowledge Gap 版本对象、有限真实 Web Search、
   LLM reassessment、`abstained`/`answered_with_gaps`、后续证据精确回链、开放 Gap API/SDK/前端账本、

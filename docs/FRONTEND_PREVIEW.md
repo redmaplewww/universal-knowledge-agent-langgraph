@@ -30,7 +30,8 @@ Open <http://127.0.0.1:8890/>. The frontend calls `http://127.0.0.1:8877` by def
 - Tenant and security-scope context controls.
 - Scoped retrieval with answer, unknowns, and evidence-pack rendering.
 - A compact Knowledge Gap ledger backed by `GET /v1/knowledge-gaps`: question, unresolved reason,
-  missing evidence, possible directions, research attempts, linking keys, and one-click gap lookup.
+  missing evidence, possible directions, research attempts, linking keys, one-click gap lookup, and
+  an inline manual-evidence form bound to the exact Gap ID.
 - A live evidence-trail timeline backed by `/v1/threads/{thread_id}/events`.
 - An active Experience library backed by `GET /v1/knowledge`, including the model synthesis,
   context, problem, mechanism, action, outcome, rationale, source logic, applicability boundary,
@@ -72,7 +73,7 @@ allow-list with the exact origin used by that deployment.
 
 ## Preview verification
 
-The `0.3.0` preview was exercised against the real configured `glm-5.2` provider and real Web Search using an
+The `0.3.1` preview was exercised against the real configured `glm-5.2` provider and real Web Search using an
 isolated `demo-ui/private` state:
 
 1. ingest and approve a contextual Agent-governance baseline and a refinement;
@@ -86,11 +87,16 @@ isolated `demo-ui/private` state:
    more” reveals all 7, and the 390 px mobile viewport has no horizontal overflow.
 8. ingest an intentionally under-specified field note, confirm the UI shows `ABSTAINED / OPEN GAP`,
    inspect missing evidence and research history, then launch retrieval directly from the Gap row.
+9. open the inline manual supplement form, submit Chinese evidence against the exact Gap ID, inspect the
+   generated approval brief, approve it, and confirm the target Gap disappears while generated natural-language
+   fields remain Chinese. Product codes and quoted source terms remain unchanged.
 
 The reproducible AAWO summary is in
 [`CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`](CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md).
 The refusal/linking gate is documented in
 [`EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md`](EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md).
+The manual supplement and output-language repair is documented in
+[`MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md`](MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md).
 
 This is a local preview, not an externally hosted public deployment. The API and frontend
 processes bind to loopback only.

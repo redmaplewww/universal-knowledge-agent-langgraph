@@ -338,6 +338,58 @@ def test_later_evidence_links_then_closes_gap_only_after_activation(settings) ->
     ) == []
 
 
+def test_manual_supplement_targets_exact_gap_before_model_understanding(settings) -> None:
+    provider = GapAwareProvider()
+    with AgentRuntime(settings) as runtime:
+        runtime.services.ingestion.understanding = provider
+        runtime.services.ingestion.research = FakeWebSearch()
+        origin = _ingest(
+            runtime,
+            "经验：KX-17 在蓝色窗口后必须回摆，但记录者未解释这些词。",
+            "manual-gap-origin",
+            approve=True,
+        )
+        gap_id = origin["knowledge_gap_ids"][0]
+        supplement = runtime.invoke(
+            intent="ingest",
+            tenant_id="tenant-a",
+            security_scope_id="private",
+            input_refs=[
+                runtime.stage_text(
+                    "完整定义：蓝色窗口表示校准信号稳定，结束后执行回摆，"
+                    "验证执行器能回到安全零位。"
+                )
+            ],
+            payload={
+                "auto_approve": False,
+                "target_gap_ids": [gap_id],
+                "supplement_mode": "human_evidence",
+            },
+            thread_id="manual-gap-supplement",
+        )
+
+        assert supplement["__interrupt__"], supplement
+        approval_candidates = supplement["approval_context"]["candidates"]
+        assert approval_candidates, supplement["approval_context"]
+        candidate_id = approval_candidates[0]["candidate_id"]
+        candidate = runtime.services.repository.get_revision(
+            SecurityScope("tenant-a", "private"), "candidate", candidate_id
+        )
+        assert candidate is not None
+        assert candidate.payload["resolves_gap_ids"] == [gap_id]
+        assert runtime.services.repository.get_revision(
+            SecurityScope("tenant-a", "private"), "knowledge_gap", gap_id
+        ).status == "research_exhausted"
+
+        approved = runtime.resume(
+            thread_id="manual-gap-supplement",
+            value={"decision": "approve"},
+            tenant_id="tenant-a",
+            security_scope_id="private",
+        )
+        assert approved["response"]["resolved_knowledge_gap_ids"] == [gap_id]
+
+
 def test_supported_experience_is_not_falsely_refused(settings) -> None:
     with AgentRuntime(settings) as runtime:
         runtime.services.ingestion.understanding = GapAwareProvider()

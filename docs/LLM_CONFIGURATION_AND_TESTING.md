@@ -39,3 +39,22 @@ uv run --no-sync python scripts/run_knowledge_gap_gate.py `
 ```
 
 脚本必须指向真实 HTTP 边界和真实 LLM 服务；最终报告与 JSONL ledger 都应保存 SHA-256。
+
+## 人工补证与输出语言合同
+
+`0.3.1` 为开放 Gap 增加精确人工补证入口，并要求生成语言跟随来源。中文文本会给首次理解与
+研究复核同时注入简体中文约束；如果结构化返回中的标题、概览、缺口原因或方向仍发生明显英文
+漂移，Provider 会在相同模型边界内执行一次受限语言修复。修复只允许改变生成的自然语言字段，
+不得改变事实、ID、URL、数字、数组、Evidence 关系或原文摘录；二次检查仍失败时按 Provider
+合同错误关闭，而不是把英文或不可靠内容写入知识库。
+
+真实 HTTP/LLM 冒烟测试使用 UTF-8 脚本，避免 PowerShell 原生管道改变中文输入：
+
+```powershell
+uv run --no-sync python scripts/run_manual_gap_language_smoke.py `
+  --base-url http://127.0.0.1:8877
+```
+
+脚本会创建中文模糊 Gap、检查生成字段包含中文、通过专用端点提交人工证据、验证审批候选精确
+绑定该 Gap，批准后确认开放列表为空。它会产生真实模型调用，运行前必须用 `llm-api-config`
+完成受管配置注入；输出只包含非秘密 Provider revision、ID、状态和断言结果。

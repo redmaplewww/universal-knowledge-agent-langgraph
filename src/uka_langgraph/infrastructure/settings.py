@@ -19,7 +19,7 @@ class Settings:
     llm_base_url: str | None
     llm_model: str | None
     llm_api_key: str | None
-    graph_version: str = "0.3.0"
+    graph_version: str = "0.3.1"
     web_research_enabled: bool = False
     web_search_url: str | None = None
     web_search_engine: str = "search_std"

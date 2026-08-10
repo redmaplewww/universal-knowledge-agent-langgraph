@@ -146,6 +146,44 @@ def test_http_api_contract(settings) -> None:
     )
     assert forbidden.json()["status"] == "unknown"
 
+    gap_origin = client.post(
+        "/v1/ingest",
+        json={
+            "text": "这条设备经验含义不明，适用条件仍然未知。",
+            "tenant_id": "tenant-a",
+            "security_scope_id": "private",
+            "auto_approve": True,
+        },
+    )
+    assert gap_origin.status_code == 200
+    assert gap_origin.json()["status"] == "abstained"
+    gap_id = gap_origin.json()["knowledge_gap_ids"][0]
+    supplement = client.post(
+        f"/v1/knowledge-gaps/{gap_id}/supplements",
+        json={
+            "evidence_text": "设备手册明确给出了术语定义、触发条件和可核验结果。",
+            "source_note": "设备手册第 4.2 节",
+            "tenant_id": "tenant-a",
+            "security_scope_id": "private",
+            "actor_id": "knowledge-curator",
+        },
+    )
+    assert supplement.status_code == 200
+    assert supplement.json()["__interrupt__"]
+    assert supplement.json()["approval_context"]["evidence"][0]["excerpt"].startswith(
+        "设备手册明确给出了"
+    )
+
+    missing_gap = client.post(
+        "/v1/knowledge-gaps/gap-does-not-exist/supplements",
+        json={
+            "evidence_text": "不会被接受的补充。",
+            "tenant_id": "tenant-a",
+            "security_scope_id": "private",
+        },
+    )
+    assert missing_gap.status_code == 422
+
 
 def test_http_api_rejects_extra_fields(settings) -> None:
     client = TestClient(create_app(settings))

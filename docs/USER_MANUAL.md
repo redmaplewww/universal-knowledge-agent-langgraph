@@ -169,6 +169,28 @@ GET /v1/knowledge?tenant_id=demo&security_scope_id=private&limit=100
 GET /v1/knowledge-gaps?tenant_id=demo&security_scope_id=private&limit=100
 ```
 
+控制台的“待补知识”卡片可以直接点“手工补证”。请填写能回答该卡片问题的原始事实，可选填写
+来源说明；前端会把目标 `gap_id` 一并提交，避免只靠关键词猜测关联。HTTP 调用方式如下：
+
+```text
+POST /v1/knowledge-gaps/{gap_id}/supplements
+{
+  "evidence_text": "现场手册明确写明……",
+  "source_note": "设备手册第 4.2 节",
+  "tenant_id": "demo",
+  "security_scope_id": "private",
+  "actor_id": "knowledge-admin"
+}
+```
+
+补证不会直接把文字写成 active Knowledge。证据足够时响应返回 `approval_context`，审批人核对
+模型理解、原文和拟关闭的 Gap 后再批准；证据仍不足时响应为 `abstained`，同一个 Gap 追加新 revision
+并保留新的尝试记录。拒绝候选也不会关闭 Gap，只有批准激活后才会精确关闭目标项。
+
+系统的生成语言跟随本次来源文本：中文来源的标题、概览、缺口问题、原因和可能方向应为简体中文；
+设备型号、代码、专有名词和被引用的原始外文术语不会被强行翻译。历史英文演示数据不会被当成
+中文对话新生成的内容。
+
 每个词条会返回 Experience 字段、领域、前提/排除项、原文证据、完整性状态以及 learning /
 evolution 谱系。前端控制台的 **Knowledge library** 可以按领域、主题、理解内容或原文筛选，
 点击“用这条经验检索”会自动填入来源编号和正确领域。为控制页面长度，默认只显示前 5 条紧凑

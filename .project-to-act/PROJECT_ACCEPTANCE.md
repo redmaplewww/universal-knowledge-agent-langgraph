@@ -2,10 +2,10 @@
 
 ## 当前验收结论
 
-- 结论：`0.3.0` 的 A-001..A-021/G-008 全部通过
+- 结论：`0.3.1` 的 A-001..A-022/G-009 全部通过
 - 验收范围：独立 LangGraph P0、本地完整产品 Gate、任意领域路由/分类，以及文档级 Experience、
-  原文逻辑对照、受治理自进化、审批可见性、紧凑知识库和认识论拒答/补证闭环 Gate
-- 最后检查：2026-08-10
+  原文逻辑对照、受治理自进化、审批可见性、紧凑知识库、认识论拒答/补证闭环和中文人工补证 Gate
+- 最后检查：2026-08-11
 - 遗留问题：无作用域查询尚无自动领域推断且结果纯度不足；未知标签 taxonomy 回退仍可动态生成 ID；
   GitHub Actions 尚未上传（OAuth 缺少 `workflow` scope）；生产存储/身份认证/容量压测、真实多模态、
   向量或图混合检索和领域专家质量认证仍未在本轮验收范围
@@ -35,6 +35,7 @@
 | A-019 | 完整文档生成自包含 Experience 并绑定原文逻辑/Locator；Knowledge library 与 EvidencePack 可对照原文；active Knowledge 实际参与后续理解；演进只生成不可自动激活的候选；4 领域与跨租户通过 | 通过 | 47 项离线测试、真实 GLM、AAWO HTTP 20 项检查/115 条 Ledger、SQLite 审计、浏览器 UI/检索验收 | E-019 |
 | A-020 | 审批人在决定前可看到候选 Experience、理解链、Scope/risk、原文逻辑、Evidence/Locator/hash 和决策效果；原文不进入 checkpoint；知识库默认 5 条紧凑行、单条展开、可继续加载，桌面/390px 无溢出 | 通过 | API/SDK 合同、checkpoint 约束、真实 GLM 高风险候选、浏览器桌面/移动端交互、全量回归与洁净安装 | E-020 |
 | A-021 | 无法可靠理解的经验在有限真实研究后保持 `abstained` 并版本化保存 Gap；检索仍拒答；已有核心答案不被外围 Gap 抹掉；新证据经审批后精确关闭目标 Gap；跨租户隔离且机密材料零外发 | 通过 | 51 项离线回归、真实 GLM/Web Search/HTTP、AAWO 三轮纠正驱动、SQLite/ledger 审计、浏览器缺口检索、构建与洁净安装 | E-021 |
+| A-022 | 用户可对准一个开放 Gap 手工提交事实与来源说明；证据不足或拒绝时不关闭，批准激活后才精确关闭；中文来源的生成字段为简体中文且专名/原文保留；界面完整中文展示并在桌面/390px 可用 | 通过 | 53 项回归、真实 `glm-5.2`/HTTP 中文补证旅程、历史 Gap revision 审计、桌面/390px 浏览器、控制台、构建与洁净安装 | E-022 |
 
 ## 证据索引
 
@@ -62,6 +63,7 @@
 | E-019 | 2026-08-10 | F-018 真实上下文 Experience Gate：受管 `glm-5.2`、AAWO HTTP、4 领域、知识复用/演进、SQLite、47 项 pytest、Ruff、Node、浏览器验收与发布包洁净安装 | 0（最终 Gate）；1（首次纠正驱动运行，保留） | 最终报告 `0955737E...05BB437`；首次失败 `3310BE5E...79BD6E91`；中间通过 `A90617CA...258EE2`；wheel `F5E0CEA5...7506F06`；Provider `openai-compatible:glm-5.2` | 最终 20/20、网络安全/财务/机械/教育 4/4、Ledger 115 条且完整性错误 0；单篇 Agent 材料不再产生孤句；原文对照/检索/lineage/evolution candidate fail-closed/跨租户通过；浏览器一键检索 `ANSWERED / 1 EXPERIENCE`、控制台错误 0；0.2.0 wheel/sdist 构建、洁净 Python 3.11 安装及 49 个依赖一致性通过 | `docs/CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`、`build/contextual-experience-gate-20260810d/evidence/`、`dist/universal_knowledge_agent_langgraph-0.2.0-py3-none-any.whl` | Provider/Experience 合同/检索/演进或前端变更前 |
 | E-020 | 2026-08-10 | F-019 审批可见性与紧凑知识库：`llm-api-config` Status/Inject、真实 `glm-5.2` 摄取、浏览器桌面/390px、API/SDK 合同、47 项 pytest、Ruff/Node/compileall、wheel/sdist 与洁净安装 | 0 | wheel `FA04030F...552269`；Provider `openai-compatible:glm-5.2`；graph/API `0.2.1` | 真实高风险生产补丁候选完整展示标题/概览/六段理解/3 条逻辑/Scope/risk/原文/hash，拒绝后保持非 active；知识库默认 5/7、同时只展开 1 条、显示更多至 7；390px 无横向溢出；控制台错误 0；Python 3.11 洁净安装和 49 个依赖一致性通过 | `src/uka_langgraph/orchestration/runtime.py`、`frontend/`、`docs/FRONTEND_PREVIEW.md`、`dist/universal_knowledge_agent_langgraph-0.2.1-py3-none-any.whl` | 审批响应/前端/版本变更前 |
 | E-021 | 2026-08-10 | F-020 认识论拒答与 Knowledge Gap：受管 `glm-5.2`、真实 Web Search、AAWO HTTP 三轮、SQLite/JSONL 审计、浏览器、51 项 pytest、Ruff/Node/compileall、wheel/sdist 与洁净安装 | 0（最终）；1（前两轮失败均保留） | 最终报告 `2D3724B4...3F1378F`；Ledger `5E94B6AD...A1B478`；首次失败 `E38F4BA5...F5595`；二次失败 `6C1E9457...447EA`；wheel `27EAA5EB...AB87DE`；sdist `CE7A391D...5C0756`；Provider `openai-compatible:glm-5.2` | 模糊经验拒答 3/3、Gap 检索拒答 3/3、核心答案保留 1/1、后续证据精确回链 1/1；跨租户与无关 Gap 保留通过；机密外发单测通过；51/51；Python 3.11 洁净安装和 49 个依赖一致性通过 | `docs/EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md`、`build/knowledge-gap-aawo-gate-20260810c/evidence/`、`dist/universal_knowledge_agent_langgraph-0.3.0-py3-none-any.whl` | Provider/研究/Gap/检索合同变更前 |
+| E-022 | 2026-08-11 | F-021 精确人工补证与中文一致性：受管 `glm-5.2` 真实 HTTP 旅程、53 项 pytest、Ruff/Node/compileall、桌面/390px 浏览器、历史 Gap 追加 revision、wheel/sdist 与洁净安装 | 0 | 报告 `507056DE...FFA6EB25`；wheel `549D045B...A53DA3AC`；sdist `B7FE502A...1348D4D`；Provider `openai-compatible:glm-5.2`；graph/API `0.3.1` | 中文模糊材料生成中文 Gap；人工证据生成中文候选并精确绑定目标 Gap；批准后开放 Gap 归零；历史英文演示 Gap 追加中文 revision 2；桌面/390px 无横向溢出、控制台错误 0；53/53；Python 3.11 洁净安装和 49 个依赖一致性通过 | `docs/MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md`、`scripts/run_manual_gap_language_smoke.py`、`frontend/`、`dist/universal_knowledge_agent_langgraph-0.3.1-py3-none-any.whl` | Provider/补证/语言/前端合同变更前 |
 
 ## Gate 记录
 
@@ -75,8 +77,13 @@
 | G-006 | 2026-08-10 | 上下文 Experience、原文逻辑与受治理自进化 Gate | `0.2.0` | 通过 | E-019 | 无；保留首次 AAWO 失败，不把 4 领域代表性 Gate 宣称为任意领域数学穷举或专家认证 |
 | G-007 | 2026-08-10 | 审批决策可见性与紧凑知识库 Gate | `0.2.1` | 通过 | E-020 | 无；只确认本地授权响应和浏览器可用性，不豁免生产 IAM、审计策略或外部部署 Gate |
 | G-008 | 2026-08-10 | 认识论拒答、有限研究与补证回链 Gate | `0.3.0` | 通过 | E-021 | 无；保留两轮真实失败，不把代表性领域 Gate 宣称为任意领域穷举或专家认证；不豁免生产 IAM、来源信誉与外发策略 Gate |
+| G-009 | 2026-08-11 | 精确人工补证与中文输出一致性 Gate | `0.3.1` | 通过 | E-022 | 无；只确认指定真实模型旅程和本地浏览器可用性，不豁免生产 IAM、来源信誉、容量或领域专家认证 |
 
 ## 验收记录
+
+- 2026-08-11｜精确人工补证与中文一致性｜E-022｜真实 `glm-5.2`/HTTP 中文旅程从拒答、Gap、
+  人工证据、完整审批到精确关闭通过；历史英文 Gap 追加中文 revision；53/53、桌面/390px、控制台、
+  构建和洁净安装通过｜A-022/G-009 通过。
 
 - 2026-08-10｜认识论拒答与 Knowledge Gap 补证闭环｜E-021｜真实 GLM/Web Search/HTTP 的三轮
   纠正驱动测试保留 9 项与 3 项失败，最终四项核心比率均为 1.0；跨租户、无关 Gap、机密零外发、

@@ -2,7 +2,7 @@
 
 ## 1. 运行边界
 
-`0.3.0` 是本地持久化产品：SQLite 领域库、SQLite checkpointer 和本地内容寻址对象库组成
+`0.3.1` 是本地持久化产品：SQLite 领域库、SQLite checkpointer 和本地内容寻址对象库组成
 可恢复链路。它适合单机开发、评测和受控内部使用，不等于生产集群部署。
 
 生产化前必须明确：外部 IAM/RBAC、租户解析、PostgreSQL/对象存储、密钥托管、备份恢复、
@@ -87,10 +87,12 @@ uv run ruff check .
 uv build
 ```
 
-`0.1.1`/`0.1.2`/`0.2.0`/`0.2.1`/`0.3.0` 的领域 revision、Evidence 和 active Registry 设计为兼容；`0.2.0`
+`0.1.1`/`0.1.2`/`0.2.0`/`0.2.1`/`0.3.0`/`0.3.1` 的领域 revision、Evidence 和 active Registry 设计为兼容；`0.2.0`
 新增的 Experience 与 learning 字段使用可选 JSON payload，旧 Knowledge 仍可读取但不会伪造
 缺失的逻辑关系或原文摘录；`0.2.1` 只新增动态 `approval_context` 响应；`0.3.0` 新增可选的
 `knowledge_gap` revision 与研究 Evidence，不需要破坏性数据库迁移。
+`0.3.1` 只新增专用人工补证接口、可选请求字段和 Provider 输出语言校验；既有 Gap 可继续读取，
+历史非中文展示项可以通过追加 revision 本地化，不应覆写或删除旧 revision。
 未完成的旧
 checkpoint 不会自动迁移到新的 tenant/scope 安全 namespace，升级前应完成、拒绝或执行显式
 运维迁移。

@@ -80,6 +80,56 @@ class UniversalKnowledgeAgent:
             )
         return _public(result)
 
+    def supplement_knowledge_gap(
+        self,
+        gap_id: str,
+        evidence_text: str,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        actor_id: str = "sdk-user",
+        classification: str = "internal",
+        source_note: str | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit human evidence for one open gap without bypassing approval."""
+        normalized_gap_id = gap_id.strip()
+        if not normalized_gap_id:
+            raise ValueError("gap_id cannot be empty")
+        if not evidence_text.strip():
+            raise ValueError("evidence_text cannot be empty")
+        note = (source_note or "").strip()
+        supplement = evidence_text.strip()
+        if note:
+            supplement = f"{supplement}\n\n补证来源说明：{note}"
+        with AgentRuntime(self.settings) as runtime:
+            security = SecurityScope(
+                tenant_id, security_scope_id, classification
+            )
+            gap = runtime.services.repository.get_revision(
+                security, "knowledge_gap", normalized_gap_id
+            )
+            if gap is None or gap.status == "resolved":
+                raise LookupError(
+                    f"open knowledge gap not found: {normalized_gap_id}"
+                )
+            reference = runtime.stage_text(supplement)
+            result = runtime.invoke(
+                intent="ingest",
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                actor_id=actor_id,
+                classification=classification,
+                input_refs=[reference],
+                payload={
+                    "auto_approve": False,
+                    "target_gap_ids": [normalized_gap_id],
+                    "supplement_mode": "human_evidence",
+                },
+                thread_id=thread_id,
+            )
+        return _public(result)
+
     def retrieve(
         self,
         query: str,

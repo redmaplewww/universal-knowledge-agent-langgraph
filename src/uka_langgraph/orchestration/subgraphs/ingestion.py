@@ -120,9 +120,13 @@ def _understand_one(
             request_id=state["request_id"],
             evidence_ids=state["evidence_ids"],
             security=security_from_state(state),
+            target_gap_ids=[
+                str(gap_id)
+                for gap_id in state.get("payload", {}).get("target_gap_ids", [])
+            ],
         )
     except Exception as exc:  # Provider exceptions are converted to a redacted graph error.
-        error_code = getattr(exc, "code", type(exc).__name__)
+        error_code = getattr(exc, "code", None) or type(exc).__name__
         return {
             "errors": [f"provider_error:{error_code}"],
         }

@@ -1,4 +1,4 @@
-# `0.3.0` 实现架构
+# `0.3.1` 实现架构
 
 ```text
 interfaces -> orchestration -> application -> domain
@@ -46,6 +46,16 @@ stage -> preflight -> preserve original Evidence
 `abstained` 结束，同时把 Gap 写入版本库。后续候选的 `resolves_gap_ids` 会进入审批上下文；
 只有批准激活节点才追加 `resolved` revision，并记录 `resolved_by_knowledge_ids`。拒绝候选不会
 关闭 Gap。`confidential`、`restricted`、`secret`、`prohibited` 分类在研究层失败关闭，查询不外发。
+
+人工补证通过专用 SDK/API 把精确 `target_gap_ids` 注入摄取服务。服务先验证 Gap 属于同一
+tenant/scope 且尚未解决，再把该 Gap 的问题、缺证和链接键放在普通关键词关联项之前交给 Provider。
+如果新证据仍不足，同一 Gap 追加 revision 并合并尝试记录；如果形成候选，`resolves_gap_ids`
+进入审批上下文，仍由既有激活节点决定是否关闭，人工输入不能绕过 Gate。
+
+Provider 根据来源文本选择输出语言。中文来源会在首次理解和研究复核提示中明确要求简体中文；
+返回后还会对所有生成的自然语言字段做检测。检测到明显英文漂移时执行一次只允许翻译展示字段、
+不得改动事实、ID、URL、数字、数组或 Evidence 绑定的结构化修复；修复后仍不一致则合同失败关闭。
+代码、标识符、专有名词和原文摘录不参与强制翻译。
 
 ## 检索与回答
 

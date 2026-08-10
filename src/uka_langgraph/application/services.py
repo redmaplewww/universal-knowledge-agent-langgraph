@@ -171,8 +171,20 @@ class IngestionService:
         return result
 
     def understand(
-        self, *, request_id: str, evidence_ids: list[str], security: SecurityScope
+        self,
+        *,
+        request_id: str,
+        evidence_ids: list[str],
+        security: SecurityScope,
+        target_gap_ids: list[str] | None = None,
     ) -> dict[str, Any]:
+        normalized_target_gap_ids = sorted(
+            {
+                str(gap_id).strip()
+                for gap_id in (target_gap_ids or [])[:8]
+                if str(gap_id).strip()
+            }
+        )
         op_id = scoped_operation_id(security, request_id, "understand", *sorted(evidence_ids))
         if receipt := self.repository.get_receipt(op_id):
             return receipt.result
@@ -184,6 +196,7 @@ class IngestionService:
             self.research.revision if self.research is not None else "web-search:none",
             str(self.research_count),
             str(self.research_max_queries),
+            *normalized_target_gap_ids,
             *sorted(evidence_ids),
         )
         if cached := self.repository.get_receipt(cache_id):
@@ -227,7 +240,16 @@ class IngestionService:
                     for fragment in fragments
                 )
             prior_knowledge = self._related_knowledge(security, text)
-            prior_gaps = self._related_gaps(security, text)
+            targeted_gaps = self._targeted_gaps(
+                security, normalized_target_gap_ids
+            )
+            related_gaps = self._related_gaps(security, text)
+            prior_gaps = list(
+                {
+                    str(item["gap_id"]): item
+                    for item in [*targeted_gaps, *related_gaps]
+                }.values()
+            )[:8]
             result = self._understand_document(
                 text,
                 document_evidence_id,
@@ -408,10 +430,14 @@ class IngestionService:
                     }
                     else "open"
                 )
+                existing_gap = self.repository.get_revision(
+                    security, "knowledge_gap", gap.gap_id
+                )
+                previous_payload = existing_gap.payload if existing_gap else {}
                 revision = DomainRevision(
                     object_type="knowledge_gap",
                     object_id=gap.gap_id,
-                    revision=1,
+                    revision=(existing_gap.revision + 1 if existing_gap else 1),
                     status=gap_status,
                     security=security,
                     payload={
@@ -422,22 +448,60 @@ class IngestionService:
                         "research_queries": list(gap.research_queries),
                         "linking_keys": list(gap.linking_keys),
                         "confidence": gap.confidence,
-                        "source_excerpts": list(gap.source_excerpts),
+                        "source_excerpts": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get("source_excerpts", []),
+                                    *gap.source_excerpts,
+                                ]
+                            )
+                        ),
                         "related_knowledge_ids": list(gap.related_knowledge_ids),
                         "research_status": gap_status,
-                        "research_attempts": list(gap.research_attempts),
-                        "research_evidence_ids": list(gap.research_evidence_ids),
+                        "research_attempts": [
+                            *previous_payload.get("research_attempts", []),
+                            *gap.research_attempts,
+                        ],
+                        "research_evidence_ids": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get(
+                                        "research_evidence_ids", []
+                                    ),
+                                    *gap.research_evidence_ids,
+                                ]
+                            )
+                        ),
                         "scope_ids": sorted(set(document_scope_ids)),
                         "provider_revision": self.understanding.revision,
-                        "resolved_by_knowledge_ids": [],
-                        "resolution_candidate_ids": [
-                            claim.candidate_id
-                            for claim in result.claims
-                            if gap.gap_id in claim.resolves_gap_ids
-                        ],
+                        "resolved_by_knowledge_ids": list(
+                            previous_payload.get("resolved_by_knowledge_ids", [])
+                        ),
+                        "resolution_candidate_ids": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get(
+                                        "resolution_candidate_ids", []
+                                    ),
+                                    *(
+                                        claim.candidate_id
+                                        for claim in result.claims
+                                        if gap.gap_id in claim.resolves_gap_ids
+                                    ),
+                                ]
+                            )
+                        ),
                     },
-                    evidence_ids=gap_evidence_ids,
+                    evidence_ids=tuple(
+                        sorted(
+                            {
+                                *(existing_gap.evidence_ids if existing_gap else ()),
+                                *gap_evidence_ids,
+                            }
+                        )
+                    ),
                     created_at=utc_now(),
+                    parent_revision=(existing_gap.revision if existing_gap else None),
                 )
                 self.repository.put_revision(
                     revision,
@@ -580,29 +644,22 @@ class IngestionService:
         self, security: SecurityScope, text: str
     ) -> list[dict[str, Any]]:
         return [
-            {
-                "gap_id": revision.object_id,
-                "question": revision.payload.get("question", ""),
-                "reason_unresolved": revision.payload.get("reason_unresolved", ""),
-                "possible_directions": revision.payload.get(
-                    "possible_directions", []
-                ),
-                "missing_evidence": revision.payload.get("missing_evidence", []),
-                "research_queries": revision.payload.get("research_queries", []),
-                "linking_keys": revision.payload.get("linking_keys", []),
-                "confidence": revision.payload.get("confidence", 0.0),
-                "source_excerpts": revision.payload.get("source_excerpts", []),
-                "related_knowledge_ids": revision.payload.get(
-                    "related_knowledge_ids", []
-                ),
-                "research_status": revision.status,
-                "research_attempts": revision.payload.get("research_attempts", []),
-                "research_evidence_ids": revision.payload.get(
-                    "research_evidence_ids", []
-                ),
-            }
+            _gap_context(revision)
             for revision in self.repository.search_open_gaps(security, text[:8_000], 8)
         ]
+
+    def _targeted_gaps(
+        self, security: SecurityScope, gap_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        targeted: list[dict[str, Any]] = []
+        for gap_id in gap_ids:
+            revision = self.repository.get_revision(
+                security, "knowledge_gap", gap_id
+            )
+            if revision is None or revision.status == "resolved":
+                raise LookupError(f"open knowledge gap not found: {gap_id}")
+            targeted.append(_gap_context(revision))
+        return targeted
 
     def _research_unresolved_gaps(
         self,
@@ -1856,6 +1913,24 @@ def _knowledge_gap_evidence_pack(
             {evidence_id for gap in gaps for evidence_id in gap.evidence_ids}
         ),
         "evidence_pack": asdict(pack),
+    }
+
+
+def _gap_context(revision: DomainRevision) -> dict[str, Any]:
+    return {
+        "gap_id": revision.object_id,
+        "question": revision.payload.get("question", ""),
+        "reason_unresolved": revision.payload.get("reason_unresolved", ""),
+        "possible_directions": revision.payload.get("possible_directions", []),
+        "missing_evidence": revision.payload.get("missing_evidence", []),
+        "research_queries": revision.payload.get("research_queries", []),
+        "linking_keys": revision.payload.get("linking_keys", []),
+        "confidence": revision.payload.get("confidence", 0.0),
+        "source_excerpts": revision.payload.get("source_excerpts", []),
+        "related_knowledge_ids": revision.payload.get("related_knowledge_ids", []),
+        "research_status": revision.status,
+        "research_attempts": revision.payload.get("research_attempts", []),
+        "research_evidence_ids": revision.payload.get("research_evidence_ids", []),
     }
 
 
