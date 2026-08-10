@@ -524,6 +524,56 @@ class SQLiteRepository:
             ).fetchall()
         return [_revision_from_row(row) for row in rows]
 
+    def list_open_gaps(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT r.*
+                FROM revisions r
+                JOIN (
+                    SELECT tenant_id, security_scope_id, object_id, MAX(revision) AS revision
+                    FROM revisions
+                    WHERE object_type = 'knowledge_gap'
+                    GROUP BY tenant_id, security_scope_id, object_id
+                ) latest
+                  ON latest.tenant_id = r.tenant_id
+                 AND latest.security_scope_id = r.security_scope_id
+                 AND latest.object_id = r.object_id
+                 AND latest.revision = r.revision
+                WHERE r.tenant_id = ? AND r.security_scope_id = ?
+                  AND r.object_type = 'knowledge_gap'
+                  AND r.status IN (
+                    'open', 'research_exhausted', 'research_unavailable',
+                    'partially_resolved'
+                  )
+                ORDER BY r.created_at DESC, r.object_id ASC
+                LIMIT ?
+                """,
+                (
+                    security.tenant_id,
+                    security.security_scope_id,
+                    max(1, min(limit, 1000)),
+                ),
+            ).fetchall()
+        return [_revision_from_row(row) for row in rows]
+
+    def search_open_gaps(
+        self, security: SecurityScope, query: str, limit: int
+    ) -> list[DomainRevision]:
+        if not query.strip():
+            return []
+        ranked = [
+            (score, revision)
+            for revision in self.list_open_gaps(security, 1000)
+            if (score := _gap_match_score(query, revision.payload)) > 0
+        ]
+        ranked.sort(
+            key=lambda item: (-item[0], item[1].created_at, item[1].object_id)
+        )
+        return [revision for _, revision in ranked[: max(1, min(limit, 100))]]
+
     def count(self, object_type: str, security: SecurityScope | None = None) -> int:
         query = "SELECT COUNT(*) AS count FROM revisions WHERE object_type = ?"
         params: list[Any] = [object_type]
@@ -642,6 +692,66 @@ def _fts_document(payload: dict[str, Any]) -> str:
         elif raw:
             values.append(str(raw))
     return " ".join(value for value in values if value)
+
+
+def _gap_match_score(query: str, payload: dict[str, Any]) -> float:
+    normalized_query = re.sub(r"\s+", " ", query.casefold()).strip()
+    document = re.sub(
+        r"\s+",
+        " ",
+        " ".join(
+            str(value)
+            for key in (
+                "question",
+                "reason_unresolved",
+                "possible_directions",
+                "missing_evidence",
+                "research_queries",
+                "linking_keys",
+                "source_excerpts",
+            )
+            for value in (
+                payload.get(key, [])
+                if isinstance(payload.get(key, []), (list, tuple, set))
+                else [payload.get(key, "")]
+            )
+            if value
+        ).casefold(),
+    ).strip()
+    if not normalized_query or not document:
+        return 0.0
+    if normalized_query in document:
+        return 10.0
+    linking_keys = [
+        re.sub(r"\s+", " ", str(value).casefold()).strip()
+        for value in payload.get("linking_keys", [])
+        if str(value).strip()
+    ]
+    exact_keys = [
+        value
+        for value in linking_keys
+        if value in normalized_query or normalized_query in value
+    ]
+    if exact_keys:
+        return 8.0 + min(len(exact_keys), 4) / 10
+    identifiers = re.findall(
+        r"\b[A-Za-z][A-Za-z0-9]{1,15}(?:-[A-Za-z0-9]{1,16})+\b",
+        normalized_query,
+    )
+    if identifiers:
+        matched = sum(identifier.casefold() in document for identifier in identifiers)
+        return 6.0 * matched / len(identifiers) if matched == len(identifiers) else 0.0
+    latin_terms = {
+        term for term in re.findall(r"[a-z0-9_-]{3,}", normalized_query) if term
+    }
+    cjk = "".join(re.findall(r"[\u3400-\u9fff]", normalized_query))
+    cjk_bigrams = {cjk[index : index + 2] for index in range(max(0, len(cjk) - 1))}
+    terms = latin_terms | cjk_bigrams
+    if not terms:
+        return 0.0
+    matched = sum(term in document for term in terms)
+    ratio = matched / len(terms)
+    return ratio if ratio >= 0.5 and matched >= min(2, len(terms)) else 0.0
 
 
 def _revision_from_row(row: sqlite3.Row) -> DomainRevision:

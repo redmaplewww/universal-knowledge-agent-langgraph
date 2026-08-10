@@ -2,6 +2,6 @@
 
 from uka_langgraph.interfaces.sdk import UniversalKnowledgeAgent
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = ["UniversalKnowledgeAgent", "__version__"]

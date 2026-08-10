@@ -29,6 +29,8 @@ Open <http://127.0.0.1:8890/>. The frontend calls `http://127.0.0.1:8877` by def
   full decision brief before activation.
 - Tenant and security-scope context controls.
 - Scoped retrieval with answer, unknowns, and evidence-pack rendering.
+- A compact Knowledge Gap ledger backed by `GET /v1/knowledge-gaps`: question, unresolved reason,
+  missing evidence, possible directions, research attempts, linking keys, and one-click gap lookup.
 - A live evidence-trail timeline backed by `/v1/threads/{thread_id}/events`.
 - An active Experience library backed by `GET /v1/knowledge`, including the model synthesis,
   context, problem, mechanism, action, outcome, rationale, source logic, applicability boundary,
@@ -70,7 +72,7 @@ allow-list with the exact origin used by that deployment.
 
 ## Preview verification
 
-The `0.2.1` preview was exercised against the real configured `glm-5.2` provider using an
+The `0.3.0` preview was exercised against the real configured `glm-5.2` provider and real Web Search using an
 isolated `demo-ui/private` state:
 
 1. ingest and approve a contextual Agent-governance baseline and a refinement;
@@ -82,9 +84,13 @@ isolated `demo-ui/private` state:
    reject it so it never enters active Knowledge;
 7. verify the library initially renders 5 of 7 compact rows, only one row opens at a time, “show
    more” reveals all 7, and the 390 px mobile viewport has no horizontal overflow.
+8. ingest an intentionally under-specified field note, confirm the UI shows `ABSTAINED / OPEN GAP`,
+   inspect missing evidence and research history, then launch retrieval directly from the Gap row.
 
 The reproducible AAWO summary is in
 [`CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`](CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md).
+The refusal/linking gate is documented in
+[`EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md`](EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md).
 
 This is a local preview, not an externally hosted public deployment. The API and frontend
 processes bind to loopback only.

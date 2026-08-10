@@ -260,6 +260,92 @@ class UniversalKnowledgeAgent:
                 )
             return _public(entries)
 
+    def list_knowledge_gaps(
+        self,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List unresolved, tenant-scoped knowledge gaps and research lineage."""
+        with AgentRuntime(self.settings) as runtime:
+            security = SecurityScope(tenant_id, security_scope_id)
+            revisions = runtime.services.repository.list_open_gaps(security, limit)
+            entries: list[dict[str, Any]] = []
+            for revision in revisions:
+                scope_ids = [
+                    str(item) for item in revision.payload.get("scope_ids", [])
+                ]
+                scopes = [
+                    runtime.services.repository.get_revision(
+                        security, "scope", scope_id
+                    )
+                    for scope_id in scope_ids
+                ]
+                domain_ids = sorted(
+                    {
+                        str(domain)
+                        for scope in scopes
+                        if scope is not None
+                        for domain in scope.payload.get(
+                            "domain_ids", scope.payload.get("domain", [])
+                        )
+                    }
+                )
+                entries.append(
+                    {
+                        "gap_id": revision.object_id,
+                        "revision": revision.revision,
+                        "status": revision.status,
+                        "classification": revision.security.classification,
+                        "question": str(revision.payload.get("question", "")),
+                        "reason_unresolved": str(
+                            revision.payload.get("reason_unresolved", "")
+                        ),
+                        "possible_directions": [
+                            str(item)
+                            for item in revision.payload.get(
+                                "possible_directions", []
+                            )
+                        ],
+                        "missing_evidence": [
+                            str(item)
+                            for item in revision.payload.get("missing_evidence", [])
+                        ],
+                        "research_queries": [
+                            str(item)
+                            for item in revision.payload.get("research_queries", [])
+                        ],
+                        "linking_keys": [
+                            str(item)
+                            for item in revision.payload.get("linking_keys", [])
+                        ],
+                        "confidence": float(
+                            revision.payload.get("confidence", 0.0)
+                        ),
+                        "research_status": str(
+                            revision.payload.get("research_status", revision.status)
+                        ),
+                        "research_attempts": list(
+                            revision.payload.get("research_attempts", [])
+                        ),
+                        "research_evidence_ids": list(
+                            revision.payload.get("research_evidence_ids", [])
+                        ),
+                        "related_knowledge_ids": list(
+                            revision.payload.get("related_knowledge_ids", [])
+                        ),
+                        "resolution_candidate_ids": list(
+                            revision.payload.get("resolution_candidate_ids", [])
+                        ),
+                        "scope_ids": scope_ids,
+                        "domain_ids": domain_ids,
+                        "evidence_ids": list(revision.evidence_ids),
+                        "created_at": revision.created_at,
+                    }
+                )
+            return _public(entries)
+
     def correct_text(
         self,
         replacement: str,

@@ -69,7 +69,7 @@ def create_app(
     agent = UniversalKnowledgeAgent(settings, project_root=project_root)
     app = FastAPI(
         title="Universal Knowledge Agent",
-        version="0.2.1",
+        version="0.3.0",
         description="Evidence-first local LangGraph knowledge agent API",
     )
     app.add_middleware(
@@ -126,6 +126,17 @@ def create_app(
             security_scope_id=security_scope_id,
             limit=limit,
             domain=domain,
+        )
+
+    @app.get("/v1/knowledge-gaps")
+    def list_knowledge_gaps(
+        tenant_id: str, security_scope_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return _call(
+            agent.list_knowledge_gaps,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
         )
 
     @app.post("/v1/corrections")

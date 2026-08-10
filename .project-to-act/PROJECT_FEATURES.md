@@ -31,9 +31,13 @@
 | F-017 | 深层完整性、线程隔离与治理 Gate | P0/P1 | 已完成 | F-005,F-010,F-013,F-016 | 纠正重新分类并执行 active revision CAS；checkpoint tenant/scope namespace；Evidence 缺失失败关闭；Scope/时效过滤后 limit；冲突生产；Evolution 绑定评测证据；Parser 超限不静默丢失；A-018/G-005 通过 | E-014 |
 | F-018 | 文档级 Experience、原文逻辑对照与知识驱动演进 | P0 | 已完成 | F-009..F-017 | 按父 Evidence 整体理解；Experience v2 与 LogicalRelation 入库；Knowledge library/EvidencePack 展示原文对照；active Knowledge 注入后续理解；refines/reinforces/contradicts 只生成受治理候选；A-019/G-006 通过 | E-019 |
 | F-019 | 审批决策单与紧凑知识库 | P0/UI | 已完成 | F-005,F-012,F-018 | 中断响应动态提供候选/Scope/风险/Evidence；审批页展示理解链、原文逻辑、边界和决策效果；知识库默认 5 条、单条展开、可继续加载；桌面/390px 与 A-020/G-007 通过 | E-020 |
+| F-020 | 认识论拒答、Knowledge Gap 与补证回链 | P0 | 已完成 | F-010,F-011,F-018,F-019 | 证据不足时 `abstained`；Gap 保存原因/缺证/方向/研究/链接键；有限真实 Web Search 后仍失败关闭；后续候选拒绝不关闭、批准后精确关闭；跨租户与机密外发阻断；A-021/G-008 通过 | E-021 |
 
 ## 功能变更历史
 
+- 2026-08-10｜F-020｜新增并完成｜真实 `glm-5.2`、真实 Web Search、AAWO 三轮纠正驱动；最终
+  模糊经验拒答 3/3、Gap 检索拒答 3/3、核心答案保留 1/1、补证精确回链 1/1；51 项回归、构建与
+  洁净安装通过｜E-021｜A-021/G-008 通过；保留前两轮失败证据。
 - 2026-08-10｜F-019｜新增并完成｜真实 GLM 高风险候选完整审批单、拒绝后非 active、5/7 紧凑列表、
   单条展开、390px 无横向溢出、浏览器控制台错误 0；47 项回归和 0.2.1 洁净安装通过｜E-020｜
   A-020/G-007 通过。

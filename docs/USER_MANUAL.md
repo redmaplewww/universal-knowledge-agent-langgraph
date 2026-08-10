@@ -30,11 +30,27 @@ Locator。理解前先持久化 Evidence，保证模型结果可以回到原始�
 tenant 是租户边界；security scope 是租户内的安全数据边界。两者必须同时提供。不同租户
 或安全作用域之间不能复用 thread、checkpoint、Evidence、Knowledge 或 active revision。
 
+### Knowledge Gap 与拒答
+
+Knowledge Gap 不是失败日志，而是可检索、可补证、可版本化的“当前还不知道”。当模型在原文、
+已有 active Knowledge 和有限网络检索后仍无法可靠解释一个术语、条件或因果链时，系统会：
+
+1. 不生成貌似确定的 Experience；
+2. 返回 `abstained` / `answer: unknown`；
+3. 保存待回答问题、未决原因、缺失证据、可能方向、研究查询、链接键和研究轨迹；
+4. 后续摄取新材料时把开放 Gap 作为受限上下文，并允许新候选通过 `resolves_gap_ids` 精确链接；
+5. 只有该候选获批并进入 active Registry 后，才追加一个 `resolved` Gap revision。
+
+开放状态包括 `research_exhausted`（搜过但证据仍不足）、`research_unavailable`（检索不可用或
+因分类阻止外发）和 `partially_resolved`（出现可能解释但尚未完成审批闭环）。
+
 ### 状态值
 
 - `accepted`：请求已接受，通常还在等待审批。
 - `active`：知识已审批并进入 active Registry。
 - `answered`：检索结果可在当前 Scope 和风险规则下返回。
+- `answered_with_gaps`：已有核心答案可返回，但仍同时展示外围未决项。
+- `abstained`：当前证据不足，主动拒绝给出确定答案，并返回开放 Knowledge Gap。
 - `review_required`：需要人工复核，答案保持 `unknown`。
 - `unknown`：没有可安全返回的匹配或完整性失败关闭。
 
@@ -97,6 +113,8 @@ uv run uka-lg --project-root . ingest `
 支持 UTF-8 文本、Markdown、JSON、CSV 和 HTML。输入先持久化为 Evidence，再解析为带
 Locator 的 Fragment；模型仍按原始文档整体理解，避免丢失因果、条件、顺序、对比和例外。
 Provider 合同失败、未知二进制、低置信度、高风险或 Scope 不完整会保留候选而不是直接激活。
+如果保留的是理解缺口而非可审批结论，摄取响应会直接是 `abstained`，无需批准一个并不存在的
+答案。公网研究只处理 `public`/`internal` 材料；机密及更高分类只保存 Gap，不外发查询。
 
 ## 6. 审批与恢复
 
@@ -145,6 +163,12 @@ Receipt 会让恢复和重试保持幂等。不要使用另一个 tenant/scope �
 GET /v1/knowledge?tenant_id=demo&security_scope_id=private&limit=100
 ```
 
+查看当前仍待补证的缺口：
+
+```text
+GET /v1/knowledge-gaps?tenant_id=demo&security_scope_id=private&limit=100
+```
+
 每个词条会返回 Experience 字段、领域、前提/排除项、原文证据、完整性状态以及 learning /
 evolution 谱系。前端控制台的 **Knowledge library** 可以按领域、主题、理解内容或原文筛选，
 点击“用这条经验检索”会自动填入来源编号和正确领域。为控制页面长度，默认只显示前 5 条紧凑
@@ -164,6 +188,10 @@ uv run uka-lg --project-root . retrieve `
 还可以使用 `--task`、`--subject`、`--geography` 和 `--as-of`。Scope 过滤在最终 limit 前
 执行，过期、非 active、冲突或完整性不通过的知识不会被拼入答案。EvidencePack 中的
 `experience` 是综合理解，`evidence[].excerpt` 是对应原文，两者应一起审阅。
+
+检索命中开放 Gap 且没有足够 active Knowledge 时返回 `abstained`。响应中的
+`evidence_pack.knowledge_gaps` 可用于展示缺失证据与可能方向；如果已有可靠核心知识但还有
+相关外围 Gap，则返回 `answered_with_gaps`，不会因一个外围未知项丢弃已有答案。
 
 当前版本对未传领域的查询执行 FTS5 宽检索，不自动承诺唯一领域分类。对任意领域客户请求，
 优先由调用方提供 `domain`；如果业务要求自动路由，应在网关增加领域推断和置信度 Gate。
