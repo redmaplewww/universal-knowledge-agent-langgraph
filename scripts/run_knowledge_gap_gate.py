@@ -100,9 +100,9 @@ def request_json(
 
 def security_body() -> dict[str, str]:
     return {
-        "tenant_id": "aawo-gap-gate",
+        "tenant_id": "http-gap-gate",
         "security_scope_id": "public",
-        "actor_id": "aawo-tester",
+        "actor_id": "http-tester",
     }
 
 
@@ -116,15 +116,15 @@ def ingest(base_url: str, case: dict[str, str]) -> dict[str, Any]:
             "text": case["text"],
             "classification": "public",
             "auto_approve": True,
-            "thread_id": f"aawo-{case['case_id']}",
-            "request_id": f"aawo-{case['case_id']}",
+            "thread_id": f"http-{case['case_id']}",
+            "request_id": f"http-{case['case_id']}",
         },
     )
 
 
 def thread_status(base_url: str, thread_id: str) -> dict[str, Any]:
     params = urllib.parse.urlencode(
-        {"tenant_id": "aawo-gap-gate", "security_scope_id": "public"}
+        {"tenant_id": "http-gap-gate", "security_scope_id": "public"}
     )
     return request_json(
         base_url, f"/v1/threads/{urllib.parse.quote(thread_id)}?{params}"
@@ -133,7 +133,7 @@ def thread_status(base_url: str, thread_id: str) -> dict[str, Any]:
 
 def resume_approval(base_url: str, thread_id: str) -> dict[str, Any]:
     params = urllib.parse.urlencode(
-        {"tenant_id": "aawo-gap-gate", "security_scope_id": "public"}
+        {"tenant_id": "http-gap-gate", "security_scope_id": "public"}
     )
     return request_json(
         base_url,
@@ -149,7 +149,7 @@ def ingest_with_governance(
     result = ingest(base_url, case)
     if not result.get("__interrupt__"):
         return result
-    status = thread_status(base_url, f"aawo-{case['case_id']}")
+    status = thread_status(base_url, f"http-{case['case_id']}")
     review = status.get("approval_context") or {}
     candidates = review.get("candidates") or []
     scopes = review.get("scopes") or []
@@ -161,7 +161,7 @@ def ingest_with_governance(
         for scope in scopes
     )
     if allow_approval and eligible:
-        return resume_approval(base_url, f"aawo-{case['case_id']}")
+        return resume_approval(base_url, f"http-{case['case_id']}")
     return {
         **result,
         "approval_context": review,
@@ -174,7 +174,7 @@ def ingest_with_governance(
     }
 
 
-def retrieve(base_url: str, query: str, *, tenant_id: str = "aawo-gap-gate") -> dict:
+def retrieve(base_url: str, query: str, *, tenant_id: str = "http-gap-gate") -> dict:
     result = request_json(
         base_url,
         "/v1/retrieve",
@@ -182,7 +182,7 @@ def retrieve(base_url: str, query: str, *, tenant_id: str = "aawo-gap-gate") -> 
         body={
             "tenant_id": tenant_id,
             "security_scope_id": "public",
-            "actor_id": "aawo-tester",
+            "actor_id": "http-tester",
             "query": query,
             "query_scope": {},
             "limit": 5,
@@ -191,7 +191,7 @@ def retrieve(base_url: str, query: str, *, tenant_id: str = "aawo-gap-gate") -> 
     return result.get("response", result)
 
 
-def list_gaps(base_url: str, *, tenant_id: str = "aawo-gap-gate") -> list[dict]:
+def list_gaps(base_url: str, *, tenant_id: str = "http-gap-gate") -> list[dict]:
     params = urllib.parse.urlencode(
         {
             "tenant_id": tenant_id,
@@ -370,7 +370,7 @@ def main() -> int:
     )
 
     other_tenant = retrieve(
-        args.base_url, AMBIGUOUS_CASES[0]["query"], tenant_id="aawo-gap-other"
+        args.base_url, AMBIGUOUS_CASES[0]["query"], tenant_id="http-gap-other"
     )
     check(
         "tenant-isolation",
@@ -463,7 +463,7 @@ def main() -> int:
         ),
     }
     report = {
-        "schema": "uka.aawo.knowledge-gap-gate.v1",
+        "schema": "uka.http.knowledge-gap-gate.v1",
         "generated_at": datetime.now(UTC).isoformat(),
         "base_url": args.base_url,
         "gate_status": "passed" if not failed else "failed",

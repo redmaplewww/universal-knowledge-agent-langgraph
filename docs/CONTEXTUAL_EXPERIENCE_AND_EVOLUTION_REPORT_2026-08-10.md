@@ -16,12 +16,12 @@
   `derived_from_knowledge_ids`。`refines/reinforces/contradicts` 只生成 Evolution candidate，
   `automatic_activation=false`，且必须经过 offline、shadow、canary、human Gate。
 
-## 真实模型与 AAWO 证据
+## 真实模型与 HTTP 验收 证据
 
 受管 LLM 配置：`openai-compatible:glm-5.2`。`doctor --connect` 返回 `status=ok`，凭据未进入
 日志、报告、源码或 Git。
 
-最终 AAWO HTTP Gate：
+最终 HTTP Gate：
 
 | 项目 | 结果 |
 |---|---|
@@ -41,7 +41,7 @@
 
 ## 纠正驱动回归
 
-第一次 AAWO 运行保留为失败证据：
+第一次 HTTP 验收运行保留为失败证据：
 
 - 报告 SHA-256：`3310BE5ED4F0D44A0CE8F3C17F47CDB6E9C7D347899EEF49199F3F279BD6E91`
 - Ledger：52 条，完整性错误 0。
@@ -56,7 +56,7 @@
 ## 离线与前端验收
 
 - `uv run pytest -q`：47/47 通过。
-- `uv run ruff check src tests scripts/run_contextual_experience_gate.py`：通过。
+- `uv run ruff check src tests scripts`：通过。
 - `node --check frontend/app.js`：通过。
 - 浏览器真实连接 `127.0.0.1:8890` / API `127.0.0.1:8877`：7 条 Experience v2 可见。
 - 浏览器筛选“形成性测验”后只显示 1 条；点击“用这条经验检索”自动填入

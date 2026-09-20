@@ -11,7 +11,7 @@
 - 目标：本机真实 HTTP API `http://127.0.0.1:8876`，测试后已关闭。
 - 状态：独立 fixture `build/arbitrary-domain-gate-20260803/state`，不接触既有运行数据。
 - 模型：受管 OpenAI-compatible `glm-5.2`；密钥未读取、未输出、未写入证据。
-- 执行层：`aawo-agent-tester` 的 `HttpAdapter`、`CustomerSimulationRunner` 与 append-only `EvidenceLedger`。
+- 执行层：`历史 HTTP 验收工具（已退役）` 的 `HttpAdapter`、`CustomerSimulationRunner` 与 append-only `EvidenceLedger`。
 - 副作用：仅在隔离 fixture 中摄取、批准或拒绝测试知识。
 - 输入：10 个独立领域、一个三领域纯文本、三领域 JSON、三领域 Markdown、提示注入、无意义文本、未知查询、跨租户查询和重复输入。
 
@@ -19,7 +19,7 @@
 
 | 检查 | 结果 |
 |---|---:|
-| AAWO HTTP 客户旅程 | 82 |
+| HTTP 客户旅程 | 82 |
 | 旅程通过 / 失败 | 75 / 7 |
 | EvidenceLedger 记录 | 419 |
 | Ledger 完整性错误 | 0 |
@@ -41,8 +41,8 @@
 2. 每条独立知识均保留 Evidence、Fragment、Candidate、Scope、Knowledge 和 Active Registry 链路。
 3. 使用数据库中实际生成的领域标签进行 Scope 检索时 10/10 命中；故意错误的 Scope、未知查询和跨租户查询均返回 `unknown`。
 4. 提示注入与无意义文本没有绕过审批，拒绝后保持非 Active。
-5. 重复输入没有返回 500；AAWO 旅程通过。
-6. AAWO EvidenceLedger 的 419 条记录全部通过内容哈希复核。
+5. 重复输入没有返回 500；HTTP 旅程通过。
+6. Evidence Ledger 的 419 条记录全部通过内容哈希复核。
 
 ## 主要发现
 

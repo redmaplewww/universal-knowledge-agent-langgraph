@@ -30,12 +30,12 @@ $env:UKA_WEB_SEARCH_TIMEOUT_SECONDS = "20"
 至少要求两个独立来源域且置信度不低于 0.75。
 
 真实测试应同时覆盖：模糊经验拒答、Gap 可检索、已有核心答案不被外围 Gap 抹掉、补证候选
-在拒绝后不关闭 Gap、批准后精确关闭、跨租户隔离，以及机密分类零公网调用。AAWO 脚本：
+在拒绝后不关闭 Gap、批准后精确关闭、跨租户隔离，以及机密分类零公网调用。HTTP 验收脚本：
 
 ```powershell
 uv run --no-sync python scripts/run_knowledge_gap_gate.py `
   --base-url http://127.0.0.1:8884 `
-  --output-dir build/knowledge-gap-aawo-gate/evidence
+  --output-dir build/knowledge-gap-http-gate/evidence
 ```
 
 脚本必须指向真实 HTTP 边界和真实 LLM 服务；最终报告与 JSONL ledger 都应保存 SHA-256。
@@ -81,13 +81,13 @@ uv run --no-sync python scripts/run_clustering_graph_gate.py `
   --seed-mode hybrid `
   --batch-size 4
 
-py -3.12 scripts/run_aawo_clustering_http_gate.py `
+py -3.12 scripts/run_clustering_http_gate.py `
   --base-url http://127.0.0.1:8878 `
-  --output-dir build/aawo-clustering-graph-gate `
+  --output-dir build/http-clustering-graph-gate `
   --batch-size 4
 ```
 
 `hybrid` 模式用一条真实 LLM 入库验证领域候选合同，其余隔离基线只用于给聚类提供稳定覆盖；
-聚类本身仍由真实 LLM 执行。报告和 Evidence Ledger 必须保留首次失败与纠正回归，且不得包含
-密钥、鉴权头或完整模型原始响应。小批次 4 条仍会给覆盖、缺失、桥接、重采样四个正比例桶各
+聚类本身仍由真实 LLM 执行。项目内 HTTP Gate 仅使用 Python 标准库；报告必须保留失败状态与
+纠正回归，且不得包含密钥、鉴权头或完整模型原始响应。小批次 4 条仍会给覆盖、缺失、桥接、重采样四个正比例桶各
 保留一条，适合先验证 Provider 延迟和结构化合同；扩大批次前应先确认模型侧容量。

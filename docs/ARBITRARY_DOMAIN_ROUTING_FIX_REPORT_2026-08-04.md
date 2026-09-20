@@ -37,7 +37,7 @@
 - 别名回归：`build/arbitrary-domain-gate-20260804d/evidence/alias-regression-report.json`，SHA-256 `D65309EB349430DF5F9EBA6C19ED3CFDA892A504A69C81D8403852AE2900B4F4`
 - 结构化输入：`build/arbitrary-domain-gate-20260804d/evidence/structured-domain-gate-report.json`，SHA-256 `F11D114431B4ACFA365180C6E85745A4809159B544765420A66CFB667A2A2525`
 - 编号检索：`build/arbitrary-domain-gate-20260804d/evidence/code-lookup-gate-report.json`，SHA-256 `BBBFC0413600490858D18F2137AA4F529849480D40EF4E55CC30C876B8535DA4`
-- AAWO EvidenceLedger：`build/arbitrary-domain-gate-20260804d/evidence/evidence-ledger.sqlite3`，SHA-256 `53934F29F9BC5E4C300CB23A092C4699E87FB33B62E0D56FD58A09D85E38693A`
+- Evidence Ledger：`build/arbitrary-domain-gate-20260804d/evidence/evidence-ledger.sqlite3`，SHA-256 `53934F29F9BC5E4C300CB23A092C4699E87FB33B62E0D56FD58A09D85E38693A`
 - wheel：`dist/universal_knowledge_agent_langgraph-0.1.1-py3-none-any.whl`，SHA-256 `26BE4314E8B50FDF150BB14FCE80A4B8C3CA899D2075BA9FAFEC31E688CF7743`
 
 ## 边界

@@ -8,7 +8,7 @@
 当前版本：`0.4.0`
 运行时：Python 3.11+、LangGraph 1.2.10、SQLite、FastAPI
 
-> 本项目是独立实现，不导入、不依赖同级旧 `universal-knowledge-agent` 或 AAWO 运行时。
+> 本项目是独立实现，不导入、不依赖同级旧 `universal-knowledge-agent` 或外部测试运行时。
 > 当前是可审计的本地完整产品，不宣称已经完成生产 IAM、集群容量、专家质量认证或真实多模态部署。
 
 ## 你可以用它做什么
@@ -227,7 +227,7 @@ uv run python -m compileall -q src
 uv build
 ```
 
-本地验收已覆盖 66 项离线测试；真实 `glm-5.2` 与真实 Web Search 的 Knowledge Gap AAWO HTTP
+本地验收已覆盖 66 项离线测试；真实受管模型与真实 Web Search 的 Knowledge Gap HTTP
 Gate 在工业校准、口述史、农学和软件工程代表性旅程中达到：模糊经验拒答 3/3、缺口检索拒答
 3/3、已有核心答案保留 1/1、后续证据精确回链 1/1。此前上下文 Experience Gate 产生 115 条完整 Ledger
 记录，验证了上下文综合、原文逻辑、原文对照、检索、知识复用、Evolution 不自动激活、
@@ -237,8 +237,17 @@ Gate 在工业校准、口述史、农学和软件工程代表性旅程中达到
 [认识论拒答与 Knowledge Gap 报告](docs/EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md)。
 人工补证中文旅程还验证了中文缺口、精确目标绑定、审批后关闭与桌面/390px 页面可用性，见
 [人工补证与中文一致性修复报告](docs/MANUAL_GAP_SUPPLEMENT_AND_LANGUAGE_FIX_2026-08-11.md)。
-`0.4.0` 的最终真实 LLM 聚类 Gate 为 13/13，AAWO 真实 HTTP 客户旅程为 4/4，结果见
+`0.4.0` 当前使用 `deepseek-v4.1-flash` 的真实 LLM 聚类 Gate 为 13/13，项目内 HTTP 客户旅程为
+4/4；HTTP 验收脚本只依赖 Python 标准库，不需要外部测试运行时。结果见
 [批次聚类与知识图谱报告](docs/CLUSTERING_AND_KNOWLEDGE_GRAPH_REPORT_2026-09-19.md)。
+
+```powershell
+py -3.12 scripts/run_clustering_http_gate.py `
+  --base-url http://127.0.0.1:8878 `
+  --tenant-id clustering-graph-gate `
+  --security-scope-id private `
+  --output-dir build/clustering-http-gate
+```
 
 本地 Control Room 已提供明亮的动态知识星图：使用力导向布局和节点碰撞避免高密度重叠，
 节点大小反映连接度，可按聚类或节点类型着色；悬停只突出一跳邻居，点击后用流动关系路径

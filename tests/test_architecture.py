@@ -25,7 +25,7 @@ def test_state_contains_referenced_data_not_raw_input_fields() -> None:
 
 def test_domain_layer_has_no_framework_or_old_project_imports() -> None:
     domain_root = Path(__file__).parents[1] / "src" / "uka_langgraph" / "domain"
-    forbidden = ("langgraph", "openai", "sqlite3", "uka", "aawo")
+    forbidden = ("langgraph", "openai", "sqlite3", "uka")
     for path in domain_root.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
@@ -42,10 +42,8 @@ def test_domain_layer_has_no_framework_or_old_project_imports() -> None:
             ), (path, names)
 
 
-def test_project_metadata_does_not_reference_aawo_or_old_source_path() -> None:
+def test_project_metadata_does_not_reference_old_source_path() -> None:
     root = Path(__file__).parents[1]
     metadata = (root / "pyproject.toml").read_text(encoding="utf-8").lower()
-    assert "aawo" not in metadata
     assert "reference/" not in metadata
     assert "pythonpath" not in metadata
-

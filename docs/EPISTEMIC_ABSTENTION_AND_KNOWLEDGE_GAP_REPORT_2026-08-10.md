@@ -11,7 +11,7 @@ Provider：受管 OpenAI-compatible `glm-5.2`
 最终实现会把无法可靠解释的经验保留为可检索、可研究、可补证和可版本化的 Knowledge Gap；
 后续材料可以精确链接到对应 Gap，但只有补证候选经审批激活后才关闭它。
 
-最终 AAWO Gate 通过，四项核心比率均为 100%：
+最终 HTTP 验收 Gate 通过，四项核心比率均为 100%：
 
 | 指标 | 结果 |
 |---|---:|
@@ -52,7 +52,7 @@ Gap 状态包括 `open`、`research_exhausted`、`research_unavailable`、`parti
 
 ## 纠正驱动测试记录
 
-测试使用 `aawo-agent-tester` 的合同发现、真实 HTTP 执行、证据 ledger 与纠正回归流程。失败
+测试使用 `历史 HTTP 验收工具（已退役）` 的合同发现、真实 HTTP 执行、证据 ledger 与纠正回归流程。失败
 记录被保留，没有用最终结果覆盖：
 
 | 轮次 | 结果 | 主要发现 | 报告 SHA-256 | Ledger SHA-256 |
@@ -63,8 +63,8 @@ Gap 状态包括 `open`、`research_exhausted`、`research_unavailable`、`parti
 
 最终证据位置：
 
-- `build/knowledge-gap-aawo-gate-20260810c/evidence/knowledge-gap-gate-report.json`
-- `build/knowledge-gap-aawo-gate-20260810c/evidence/knowledge-gap-evidence-ledger.jsonl`
+- `build/knowledge-gap-http-gate-20260810c/evidence/knowledge-gap-gate-report.json`
+- `build/knowledge-gap-http-gate-20260810c/evidence/knowledge-gap-evidence-ledger.jsonl`
 
 ## 前端验收
 

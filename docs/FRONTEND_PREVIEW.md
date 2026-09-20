@@ -91,7 +91,7 @@ isolated `demo-ui/private` state:
    generated approval brief, approve it, and confirm the target Gap disappears while generated natural-language
    fields remain Chinese. Product codes and quoted source terms remain unchanged.
 
-The reproducible AAWO summary is in
+The reproducible HTTP acceptance summary is in
 [`CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md`](CONTEXTUAL_EXPERIENCE_AND_EVOLUTION_REPORT_2026-08-10.md).
 The refusal/linking gate is documented in
 [`EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md`](EPISTEMIC_ABSTENTION_AND_KNOWLEDGE_GAP_REPORT_2026-08-10.md).
