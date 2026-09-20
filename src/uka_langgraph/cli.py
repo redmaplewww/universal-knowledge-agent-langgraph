@@ -45,6 +45,17 @@ def build_parser() -> argparse.ArgumentParser:
     retrieve.add_argument("--geography")
     retrieve.add_argument("--as-of")
 
+    cluster = subparsers.add_parser(
+        "cluster", help="Run proportional AI clustering and update the knowledge graph"
+    )
+    _add_security_arguments(cluster)
+    cluster.add_argument("--batch-size", type=int, default=24)
+    cluster.add_argument("--coverage-ratio", type=float, default=0.4)
+    cluster.add_argument("--uncertainty-ratio", type=float, default=0.3)
+    cluster.add_argument("--bridge-ratio", type=float, default=0.2)
+    cluster.add_argument("--replay-ratio", type=float, default=0.1)
+    cluster.add_argument("--thread-id")
+
     correct = subparsers.add_parser("correct", help="Create a new knowledge revision")
     _add_security_arguments(correct)
     _add_input_arguments(correct)
@@ -170,6 +181,19 @@ def _main(argv: list[str] | None = None) -> int:
                     "scope": query_scope,
                     "as_of": args.as_of,
                 },
+                **_security_kwargs(args),
+            )
+        elif args.command == "cluster":
+            result = runtime.invoke(
+                intent="cluster",
+                payload={
+                    "batch_size": args.batch_size,
+                    "coverage_ratio": args.coverage_ratio,
+                    "uncertainty_ratio": args.uncertainty_ratio,
+                    "bridge_ratio": args.bridge_ratio,
+                    "replay_ratio": args.replay_ratio,
+                },
+                thread_id=args.thread_id,
                 **_security_kwargs(args),
             )
         elif args.command == "correct":

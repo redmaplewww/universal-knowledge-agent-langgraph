@@ -60,7 +60,9 @@ class AgentRuntime:
     def invoke(
         self,
         *,
-        intent: Literal["ingest", "correct", "build_skill", "evolve", "retrieve"],
+        intent: Literal[
+            "ingest", "correct", "build_skill", "evolve", "retrieve", "cluster"
+        ],
         tenant_id: str,
         security_scope_id: str,
         actor_id: str = "local-user",
@@ -94,6 +96,7 @@ class AgentRuntime:
             "evidence_ids": [],
             "fragment_ids": [],
             "candidate_ids": [],
+            "knowledge_gap_ids": [],
             "scope_ids": [],
             "knowledge_ids": [],
             "skill_ids": [],
@@ -101,6 +104,7 @@ class AgentRuntime:
             "impact_ids": [],
             "evaluation_ids": [],
             "evolution_ids": [],
+            "cluster_run_ids": [],
             "receipt_ids": [],
             "warnings": [],
             "errors": [],
@@ -149,6 +153,16 @@ class AgentRuntime:
                 "error_count": len(result.get("errors", [])),
             },
         )
+        if intent == "ingest" and result.get("status") == "active":
+            auto_clustering = self._maybe_auto_cluster(
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                classification=classification,
+                thread_id=actual_thread_id,
+                request_id=actual_request_id,
+            )
+            if auto_clustering is not None:
+                result["auto_clustering"] = auto_clustering
         if "__interrupt__" in result:
             result = {
                 **result,
@@ -157,6 +171,63 @@ class AgentRuntime:
                 ),
             }
         return result
+
+    def _maybe_auto_cluster(
+        self,
+        *,
+        tenant_id: str,
+        security_scope_id: str,
+        classification: str,
+        thread_id: str,
+        request_id: str,
+    ) -> dict[str, Any] | None:
+        if (
+            not self.settings.clustering_enabled
+            or self.settings.cluster_auto_every <= 0
+        ):
+            return None
+        security = SecurityScope(
+            tenant_id, security_scope_id, classification=classification
+        )
+        active = self.services.repository.list_active_knowledge(security, 1000)
+        stats = self.services.repository.get_sampling_stats(security)
+        unsampled = [item for item in active if item.object_id not in stats]
+        if len(unsampled) < self.settings.cluster_auto_every:
+            return None
+        try:
+            result = self.services.clustering.run(
+                security=security,
+                batch_size=self.settings.cluster_batch_size,
+            )
+            self._record_event(
+                thread_id=thread_id,
+                request_id=request_id,
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                event_type="auto_clustering",
+                status=str(result.get("status", "unknown")),
+                metadata={
+                    "run_id": str(result.get("run_id") or ""),
+                    "batch_size": int(
+                        result.get("sampling", {}).get("batch_size", 0)
+                    ),
+                },
+            )
+            return result
+        except Exception as exc:
+            self._record_event(
+                thread_id=thread_id,
+                request_id=request_id,
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                event_type="auto_clustering",
+                status="failed",
+                metadata={"error_type": type(exc).__name__},
+            )
+            return {
+                "status": "failed",
+                "error_type": type(exc).__name__,
+            }
 
     def resume(
         self,
@@ -188,6 +259,16 @@ class AgentRuntime:
             status=str(result.get("status", "unknown")),
             metadata={"decision_type": "approval" if "decision" in value else "resolution"},
         )
+        if result.get("status") == "active":
+            auto_clustering = self._maybe_auto_cluster(
+                tenant_id=tenant_id,
+                security_scope_id=security_scope_id,
+                classification=str(values.get("classification", "internal")),
+                thread_id=thread_id,
+                request_id=str(values.get("request_id", "unknown")),
+            )
+            if auto_clustering is not None:
+                result["auto_clustering"] = auto_clustering
         return result
 
     def status(
@@ -236,6 +317,21 @@ class AgentRuntime:
             self.services.repository.get_revision(security, "candidate", candidate_id)
             for candidate_id in candidate_ids
         ]
+        gap_ids = set(
+            _string_list(
+                values.get("knowledge_gap_ids")
+                or details.get("knowledge_gap_ids")
+            )
+        )
+        for candidate in candidates:
+            if candidate is not None:
+                gap_ids.update(_string_list(candidate.payload.get("resolves_gap_ids")))
+        knowledge_gaps = [
+            self.services.repository.get_revision(
+                security, "knowledge_gap", gap_id
+            )
+            for gap_id in sorted(gap_ids)
+        ]
         scopes = [
             self.services.repository.get_revision(security, "scope", scope_id)
             for scope_id in scope_ids
@@ -265,6 +361,9 @@ class AgentRuntime:
             ],
             "scopes": [
                 _scope_preview(scope) for scope in scopes if scope is not None
+            ],
+            "knowledge_gaps": [
+                _gap_preview(gap) for gap in knowledge_gaps if gap is not None
             ],
             "evidence": [
                 self._evidence_preview(item) for item in evidence if item is not None
@@ -415,6 +514,7 @@ def _candidate_preview(candidate: DomainRevision) -> dict[str, Any]:
         "derived_from_knowledge_ids": _string_list(
             payload.get("derived_from_knowledge_ids")
         ),
+        "resolves_gap_ids": _string_list(payload.get("resolves_gap_ids")),
         "logical_relations": [],
     }
     preview.update({field: _bounded_text(payload.get(field)) for field in text_fields})
@@ -453,4 +553,22 @@ def _scope_preview(scope: DomainRevision) -> dict[str, Any]:
         "confidence": float(payload.get("confidence", 0.0)),
         "review_required": bool(payload.get("review_required", False)),
         **{field: _string_list(payload.get(field)) for field in list_fields},
+    }
+
+
+def _gap_preview(gap: DomainRevision) -> dict[str, Any]:
+    payload = gap.payload
+    return {
+        "gap_id": gap.object_id,
+        "revision": gap.revision,
+        "status": gap.status,
+        "question": _bounded_text(payload.get("question"), 1600),
+        "reason_unresolved": _bounded_text(
+            payload.get("reason_unresolved"), 1600
+        ),
+        "possible_directions": _string_list(payload.get("possible_directions")),
+        "missing_evidence": _string_list(payload.get("missing_evidence")),
+        "linking_keys": _string_list(payload.get("linking_keys")),
+        "research_status": str(payload.get("research_status", gap.status)),
+        "research_attempt_count": len(payload.get("research_attempts", [])),
     }

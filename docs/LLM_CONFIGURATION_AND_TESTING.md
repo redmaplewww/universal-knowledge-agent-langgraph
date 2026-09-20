@@ -13,3 +13,81 @@ API Key：
 配置完整时 `UKA_USE_LLM=auto` 会使用真实 Provider。离线回归设置 `UKA_USE_LLM=0`，确保
 测试不产生费用且可确定性复现。模型、URL 和密钥始终从环境变量读取。
 
+## Knowledge Gap 的模型与网络测试
+
+`0.3.0` 在首次理解后增加一次受限 Web Search 与 LLM reassessment。默认
+`UKA_WEB_RESEARCH=auto`：真实 LLM 可用时启用，离线 Provider 时禁用。可用以下变量收紧预算：
+
+```powershell
+$env:UKA_WEB_RESEARCH = "1"
+$env:UKA_WEB_SEARCH_COUNT = "5"
+$env:UKA_WEB_SEARCH_MAX_QUERIES = "4"
+$env:UKA_WEB_SEARCH_TIMEOUT_SECONDS = "20"
+```
+
+优先使用配置模型供应商的结构化搜索端点；不可用时退回只读搜索结果页。搜索摘要按不可信观察
+处理，先保存为 Evidence，再交给模型复核；不能仅凭一个摘要形成确定知识。研究生成的补证结论
+至少要求两个独立来源域且置信度不低于 0.75。
+
+真实测试应同时覆盖：模糊经验拒答、Gap 可检索、已有核心答案不被外围 Gap 抹掉、补证候选
+在拒绝后不关闭 Gap、批准后精确关闭、跨租户隔离，以及机密分类零公网调用。AAWO 脚本：
+
+```powershell
+uv run --no-sync python scripts/run_knowledge_gap_gate.py `
+  --base-url http://127.0.0.1:8884 `
+  --output-dir build/knowledge-gap-aawo-gate/evidence
+```
+
+脚本必须指向真实 HTTP 边界和真实 LLM 服务；最终报告与 JSONL ledger 都应保存 SHA-256。
+
+## 人工补证与输出语言合同
+
+`0.3.1` 为开放 Gap 增加精确人工补证入口，并要求生成语言跟随来源。中文文本会给首次理解与
+研究复核同时注入简体中文约束；如果结构化返回中的标题、概览、缺口原因或方向仍发生明显英文
+漂移，Provider 会在相同模型边界内执行一次受限语言修复。修复只允许改变生成的自然语言字段，
+不得改变事实、ID、URL、数字、数组、Evidence 关系或原文摘录；二次检查仍失败时按 Provider
+合同错误关闭，而不是把英文或不可靠内容写入知识库。
+
+真实 HTTP/LLM 冒烟测试使用 UTF-8 脚本，避免 PowerShell 原生管道改变中文输入：
+
+```powershell
+uv run --no-sync python scripts/run_manual_gap_language_smoke.py `
+  --base-url http://127.0.0.1:8877
+```
+
+脚本会创建中文模糊 Gap、检查生成字段包含中文、通过专用端点提交人工证据、验证审批候选精确
+绑定该 Gap，批准后确认开放列表为空。它会产生真实模型调用，运行前必须用 `llm-api-config`
+完成受管配置注入；输出只包含非秘密 Provider revision、ID、状态和断言结果。
+
+## 聚类与知识图谱的模型测试
+
+`0.4.0` 使用同一受管 Provider 生成领域候选概率、聚类索引、跨知识语义边和探索问题。配置仍由
+`llm-api-config` 注入，不增加第二套密钥文件。完整结构化聚类通常比健康探针耗时更长，可用：
+
+```powershell
+$env:UKA_LLM_TIMEOUT_SECONDS = "180"
+$env:UKA_CLUSTERING_ENABLED = "true"
+$env:UKA_CLUSTER_AUTO_EVERY = "12"
+$env:UKA_CLUSTER_BATCH_SIZE = "24"
+```
+
+真实测试应区分三层证据：Provider 健康检查、真实入库领域判别、真实聚类/图谱 HTTP 旅程。
+健康检查成功不等同业务调用成功，业务调用超时也不能改写为通过。推荐命令：
+
+```powershell
+uv run --no-sync python scripts/run_clustering_graph_gate.py `
+  --project-root . `
+  --output-dir build/clustering-graph-gate `
+  --seed-mode hybrid `
+  --batch-size 4
+
+py -3.12 scripts/run_aawo_clustering_http_gate.py `
+  --base-url http://127.0.0.1:8878 `
+  --output-dir build/aawo-clustering-graph-gate `
+  --batch-size 4
+```
+
+`hybrid` 模式用一条真实 LLM 入库验证领域候选合同，其余隔离基线只用于给聚类提供稳定覆盖；
+聚类本身仍由真实 LLM 执行。报告和 Evidence Ledger 必须保留首次失败与纠正回归，且不得包含
+密钥、鉴权头或完整模型原始响应。小批次 4 条仍会给覆盖、缺失、桥接、重采样四个正比例桶各
+保留一条，适合先验证 Provider 延迟和结构化合同；扩大批次前应先确认模型侧容量。

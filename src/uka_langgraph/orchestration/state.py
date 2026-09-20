@@ -12,7 +12,9 @@ class WorkflowState(TypedDict, total=False):
     thread_id: str
     tenant_id: str
     actor_id: str
-    intent: Literal["ingest", "correct", "build_skill", "evolve", "retrieve"]
+    intent: Literal[
+        "ingest", "correct", "build_skill", "evolve", "retrieve", "cluster"
+    ]
     security_scope_id: str
     classification: str
     graph_version: str
@@ -20,6 +22,7 @@ class WorkflowState(TypedDict, total=False):
     evidence_ids: Annotated[list[str], merge_unique]
     fragment_ids: Annotated[list[str], merge_unique]
     candidate_ids: Annotated[list[str], merge_unique]
+    knowledge_gap_ids: Annotated[list[str], merge_unique]
     scope_ids: Annotated[list[str], merge_unique]
     knowledge_ids: Annotated[list[str], merge_unique]
     skill_ids: Annotated[list[str], merge_unique]
@@ -27,6 +30,7 @@ class WorkflowState(TypedDict, total=False):
     impact_ids: Annotated[list[str], merge_unique]
     evaluation_ids: Annotated[list[str], merge_unique]
     evolution_ids: Annotated[list[str], merge_unique]
+    cluster_run_ids: Annotated[list[str], merge_unique]
     receipt_ids: Annotated[list[str], merge_unique]
     warnings: Annotated[list[str], merge_unique]
     errors: Annotated[list[str], merge_unique]

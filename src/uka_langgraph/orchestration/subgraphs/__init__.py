@@ -5,10 +5,11 @@ from uka_langgraph.orchestration.subgraphs.retrieval import build_retrieval_subg
 from uka_langgraph.orchestration.subgraphs.skill_lifecycle import build_skill_subgraph
 
 __all__ = [
+    "build_clustering_subgraph",
     "build_correction_subgraph",
     "build_evolution_subgraph",
     "build_ingestion_subgraph",
     "build_retrieval_subgraph",
     "build_skill_subgraph",
 ]
-
+from uka_langgraph.orchestration.subgraphs.clustering import build_clustering_subgraph

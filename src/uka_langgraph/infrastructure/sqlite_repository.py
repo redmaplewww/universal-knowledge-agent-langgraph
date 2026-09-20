@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -15,21 +16,34 @@ from uka_langgraph.domain.models import (
     SecurityScope,
 )
 
+_INITIALIZE_LOCKS: dict[Path, threading.RLock] = {}
+_INITIALIZE_LOCKS_GUARD = threading.Lock()
+
+
+def _initialize_lock(path: Path) -> threading.RLock:
+    with _INITIALIZE_LOCKS_GUARD:
+        return _INITIALIZE_LOCKS.setdefault(path, threading.RLock())
+
 
 class SQLiteRepository:
     def __init__(self, path: Path) -> None:
         self.path = path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_lock = _initialize_lock(self.path)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
     def initialize(self) -> None:
+        with self._initialize_lock:
+            self._initialize_unlocked()
+
+    def _initialize_unlocked(self) -> None:
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS evidence (
@@ -109,6 +123,97 @@ class SQLiteRepository:
                 );
                 CREATE INDEX IF NOT EXISTS runtime_events_thread
                     ON runtime_events (thread_id, created_at);
+
+                CREATE TABLE IF NOT EXISTS clustering_runs (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    provider_revision TEXT NOT NULL,
+                    sampling_json TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, security_scope_id, run_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS knowledge_sampling_stats (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    knowledge_id TEXT NOT NULL,
+                    sample_count INTEGER NOT NULL DEFAULT 0,
+                    last_sampled_at TEXT,
+                    priority_score REAL NOT NULL DEFAULT 0,
+                    missing_score REAL NOT NULL DEFAULT 0,
+                    potential_score REAL NOT NULL DEFAULT 0,
+                    key_score REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (tenant_id, security_scope_id, knowledge_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS knowledge_clusters (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    cluster_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    cross_domain_score REAL NOT NULL,
+                    missing_score REAL NOT NULL DEFAULT 0,
+                    potential_score REAL NOT NULL DEFAULT 0,
+                    priority_score REAL NOT NULL DEFAULT 0,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, security_scope_id, cluster_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS knowledge_cluster_members (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    cluster_id TEXT NOT NULL,
+                    knowledge_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    membership_score REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (
+                        tenant_id, security_scope_id, cluster_id, knowledge_id
+                    )
+                );
+
+                CREATE TABLE IF NOT EXISTS knowledge_graph_edges (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    edge_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    relation TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    rationale TEXT NOT NULL,
+                    evidence_ids_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, security_scope_id, edge_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS knowledge_graph_edges_source
+                    ON knowledge_graph_edges (
+                        tenant_id, security_scope_id, source_id, confidence
+                    );
+                CREATE INDEX IF NOT EXISTS knowledge_graph_edges_target
+                    ON knowledge_graph_edges (
+                        tenant_id, security_scope_id, target_id, confidence
+                    );
+
+                CREATE TABLE IF NOT EXISTS knowledge_explorations (
+                    tenant_id TEXT NOT NULL,
+                    security_scope_id TEXT NOT NULL,
+                    exploration_id TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    priority REAL NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, security_scope_id, exploration_id)
+                );
                 """
             )
             event_columns = {
@@ -122,9 +227,21 @@ class SQLiteRepository:
                 )
             connection.execute("DROP INDEX IF EXISTS runtime_events_thread")
             connection.execute(
-                "CREATE INDEX runtime_events_thread ON runtime_events "
+                "CREATE INDEX IF NOT EXISTS runtime_events_thread ON runtime_events "
                 "(tenant_id, security_scope_id, thread_id, created_at)"
             )
+            cluster_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(knowledge_clusters)"
+                ).fetchall()
+            }
+            for column in ("missing_score", "potential_score", "priority_score"):
+                if column not in cluster_columns:
+                    connection.execute(
+                        f"ALTER TABLE knowledge_clusters "
+                        f"ADD COLUMN {column} REAL NOT NULL DEFAULT 0"
+                    )
             connection.execute("DELETE FROM knowledge_fts")
             active_rows = connection.execute(
                 """
@@ -477,12 +594,21 @@ class SQLiteRepository:
             r"\b[A-Za-z][A-Za-z0-9]{1,15}(?:-[A-Za-z0-9]{1,16})+\b",
             query,
         )
-        terms = identifiers or [
+        cjk_terms = _cjk_query_terms(query)
+        latin_terms = [
+            term
+            for term in re.findall(r"[A-Za-z][A-Za-z0-9_-]+", query)
+            if term not in identifiers
+        ]
+        terms = [*dict.fromkeys(identifiers + latin_terms + cjk_terms)] or [
             term for term in re.findall(r"[\w-]+", query, flags=re.UNICODE) if term
         ]
         if not terms:
             return []
-        operator = " AND " if identifiers else " OR "
+        # Mixed CJK + identifier queries must not require every token to occur
+        # in one document.  A strict AND turns contextual learning and mixed
+        # language lookups into no-recall failures; ranking handles relevance.
+        operator = " OR "
         if identifiers:
             match_query = operator.join(
                 f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:16]
@@ -523,6 +649,412 @@ class SQLiteRepository:
                 ),
             ).fetchall()
         return [_revision_from_row(row) for row in rows]
+
+    def list_open_gaps(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT r.*
+                FROM revisions r
+                JOIN (
+                    SELECT tenant_id, security_scope_id, object_id, MAX(revision) AS revision
+                    FROM revisions
+                    WHERE object_type = 'knowledge_gap'
+                    GROUP BY tenant_id, security_scope_id, object_id
+                ) latest
+                  ON latest.tenant_id = r.tenant_id
+                 AND latest.security_scope_id = r.security_scope_id
+                 AND latest.object_id = r.object_id
+                 AND latest.revision = r.revision
+                WHERE r.tenant_id = ? AND r.security_scope_id = ?
+                  AND r.object_type = 'knowledge_gap'
+                  AND r.status IN (
+                    'open', 'research_exhausted', 'research_unavailable',
+                    'partially_resolved'
+                  )
+                ORDER BY r.created_at DESC, r.object_id ASC
+                LIMIT ?
+                """,
+                (
+                    security.tenant_id,
+                    security.security_scope_id,
+                    max(1, min(limit, 1000)),
+                ),
+            ).fetchall()
+        return [_revision_from_row(row) for row in rows]
+
+    def search_open_gaps(
+        self, security: SecurityScope, query: str, limit: int
+    ) -> list[DomainRevision]:
+        if not query.strip():
+            return []
+        ranked = [
+            (score, revision)
+            for revision in self.list_open_gaps(security, 1000)
+            if (score := _gap_match_score(query, revision.payload)) > 0
+        ]
+        ranked.sort(
+            key=lambda item: (-item[0], item[1].created_at, item[1].object_id)
+        )
+        return [revision for _, revision in ranked[: max(1, min(limit, 100))]]
+
+    def get_sampling_stats(
+        self, security: SecurityScope
+    ) -> dict[str, dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM knowledge_sampling_stats
+                WHERE tenant_id = ? AND security_scope_id = ?
+                """,
+                (security.tenant_id, security.security_scope_id),
+            ).fetchall()
+        return {
+            str(row["knowledge_id"]): {
+                "sample_count": int(row["sample_count"]),
+                "last_sampled_at": row["last_sampled_at"],
+                "priority_score": float(row["priority_score"]),
+                "missing_score": float(row["missing_score"]),
+                "potential_score": float(row["potential_score"]),
+                "key_score": float(row["key_score"]),
+            }
+            for row in rows
+        }
+
+    def record_clustering_run(
+        self,
+        security: SecurityScope,
+        run_id: str,
+        provider_revision: str,
+        sampling: dict[str, Any],
+        result: dict[str, Any],
+        created_at: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO clustering_runs
+                    (tenant_id, security_scope_id, run_id, provider_revision,
+                     sampling_json, result_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id, security_scope_id, run_id)
+                DO UPDATE SET provider_revision = excluded.provider_revision,
+                    sampling_json = excluded.sampling_json,
+                    result_json = excluded.result_json,
+                    created_at = excluded.created_at
+                """,
+                (
+                    security.tenant_id,
+                    security.security_scope_id,
+                    run_id,
+                    provider_revision,
+                    _json(sampling),
+                    _json(result),
+                    created_at,
+                ),
+            )
+
+    def upsert_sampling_stats(
+        self,
+        security: SecurityScope,
+        rows: list[dict[str, Any]],
+        sampled_at: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO knowledge_sampling_stats
+                    (tenant_id, security_scope_id, knowledge_id, sample_count,
+                     last_sampled_at, priority_score, missing_score,
+                     potential_score, key_score)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id, security_scope_id, knowledge_id)
+                DO UPDATE SET sample_count = knowledge_sampling_stats.sample_count + 1,
+                    last_sampled_at = excluded.last_sampled_at,
+                    priority_score = excluded.priority_score,
+                    missing_score = excluded.missing_score,
+                    potential_score = excluded.potential_score,
+                    key_score = excluded.key_score
+                """,
+                [
+                    (
+                        security.tenant_id,
+                        security.security_scope_id,
+                        str(row["knowledge_id"]),
+                        sampled_at,
+                        float(row.get("priority_score", 0.0)),
+                        float(row.get("missing_score", 0.0)),
+                        float(row.get("potential_score", 0.0)),
+                        float(row.get("key_score", 0.0)),
+                    )
+                    for row in rows
+                ],
+            )
+
+    def replace_cluster_index(
+        self,
+        security: SecurityScope,
+        run_id: str,
+        clusters: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+        explorations: list[dict[str, Any]],
+        created_at: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for cluster in clusters:
+                cluster_id = str(cluster["cluster_id"])
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_clusters
+                        (tenant_id, security_scope_id, cluster_id, run_id, name,
+                         summary, confidence, cross_domain_score, missing_score,
+                         potential_score, priority_score, payload_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (tenant_id, security_scope_id, cluster_id)
+                    DO UPDATE SET run_id = excluded.run_id, name = excluded.name,
+                        summary = excluded.summary, confidence = excluded.confidence,
+                        cross_domain_score = excluded.cross_domain_score,
+                        missing_score = excluded.missing_score,
+                        potential_score = excluded.potential_score,
+                        priority_score = excluded.priority_score,
+                        payload_json = excluded.payload_json, created_at = excluded.created_at
+                    """,
+                    (
+                        security.tenant_id,
+                        security.security_scope_id,
+                        cluster_id,
+                        run_id,
+                        str(cluster.get("name", "")),
+                        str(cluster.get("summary", "")),
+                        float(cluster.get("confidence", 0.0)),
+                        float(cluster.get("cross_domain_score", 0.0)),
+                        float(cluster.get("missing_score", 0.0)),
+                        float(cluster.get("potential_score", 0.0)),
+                        float(cluster.get("priority_score", 0.0)),
+                        _json(cluster),
+                        created_at,
+                    ),
+                )
+                for knowledge_id in cluster.get("member_knowledge_ids", []):
+                    connection.execute(
+                        """
+                        INSERT INTO knowledge_cluster_members
+                            (tenant_id, security_scope_id, cluster_id, knowledge_id,
+                             run_id, membership_score, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (
+                            tenant_id, security_scope_id, cluster_id, knowledge_id
+                        ) DO UPDATE SET run_id = excluded.run_id,
+                            membership_score = excluded.membership_score,
+                            created_at = excluded.created_at
+                        """,
+                        (
+                            security.tenant_id,
+                            security.security_scope_id,
+                            cluster_id,
+                            str(knowledge_id),
+                            run_id,
+                            float(cluster.get("confidence", 0.0)),
+                            created_at,
+                        ),
+                    )
+            for edge in edges:
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_graph_edges
+                        (tenant_id, security_scope_id, edge_id, run_id, source_id,
+                         relation, target_id, confidence, rationale,
+                         evidence_ids_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (tenant_id, security_scope_id, edge_id)
+                    DO UPDATE SET run_id = excluded.run_id,
+                        confidence = excluded.confidence,
+                        rationale = excluded.rationale,
+                        evidence_ids_json = excluded.evidence_ids_json,
+                        created_at = excluded.created_at
+                    """,
+                    (
+                        security.tenant_id,
+                        security.security_scope_id,
+                        str(edge["edge_id"]),
+                        run_id,
+                        str(edge["source_id"]),
+                        str(edge["relation"]),
+                        str(edge["target_id"]),
+                        float(edge.get("confidence", 0.0)),
+                        str(edge.get("rationale", "")),
+                        _json(edge.get("evidence_knowledge_ids", [])),
+                        created_at,
+                    ),
+                )
+            for exploration in explorations:
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_explorations
+                        (tenant_id, security_scope_id, exploration_id, run_id,
+                         title, question, priority, payload_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (tenant_id, security_scope_id, exploration_id)
+                    DO UPDATE SET run_id = excluded.run_id, title = excluded.title,
+                        question = excluded.question, priority = excluded.priority,
+                        payload_json = excluded.payload_json,
+                        created_at = excluded.created_at
+                    """,
+                    (
+                        security.tenant_id,
+                        security.security_scope_id,
+                        str(exploration["exploration_id"]),
+                        run_id,
+                        str(exploration.get("title", "")),
+                        str(exploration.get("question", "")),
+                        float(exploration.get("priority", 0.0)),
+                        _json(exploration),
+                        created_at,
+                    ),
+                )
+
+    def list_clusters(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM knowledge_clusters
+                WHERE tenant_id = ? AND security_scope_id = ?
+                ORDER BY priority_score DESC, cross_domain_score DESC,
+                         confidence DESC, created_at DESC
+                LIMIT ?
+                """,
+                (
+                    security.tenant_id,
+                    security.security_scope_id,
+                    max(1, min(limit, 1000)),
+                ),
+            ).fetchall()
+            members = connection.execute(
+                """
+                SELECT cluster_id, knowledge_id, membership_score
+                FROM knowledge_cluster_members
+                WHERE tenant_id = ? AND security_scope_id = ?
+                ORDER BY cluster_id, membership_score DESC, knowledge_id
+                """,
+                (security.tenant_id, security.security_scope_id),
+            ).fetchall()
+        members_by_cluster: dict[str, list[dict[str, Any]]] = {}
+        for row in members:
+            members_by_cluster.setdefault(str(row["cluster_id"]), []).append(
+                {
+                    "knowledge_id": str(row["knowledge_id"]),
+                    "membership_score": float(row["membership_score"]),
+                }
+            )
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            payload["members"] = members_by_cluster.get(str(row["cluster_id"]), [])
+            result.append(payload)
+        return result
+
+    def graph_snapshot(
+        self, security: SecurityScope, limit: int = 1000
+    ) -> dict[str, Any]:
+        bounded = max(1, min(limit, 5000))
+        with self._connect() as connection:
+            edge_rows = connection.execute(
+                """
+                SELECT * FROM knowledge_graph_edges
+                WHERE tenant_id = ? AND security_scope_id = ?
+                ORDER BY confidence DESC, created_at DESC
+                LIMIT ?
+                """,
+                (security.tenant_id, security.security_scope_id, bounded),
+            ).fetchall()
+            exploration_rows = connection.execute(
+                """
+                SELECT payload_json FROM knowledge_explorations
+                WHERE tenant_id = ? AND security_scope_id = ?
+                ORDER BY priority DESC, created_at DESC
+                LIMIT ?
+                """,
+                (security.tenant_id, security.security_scope_id, bounded),
+            ).fetchall()
+        return {
+            "clusters": self.list_clusters(security, bounded),
+            "edges": [
+                {
+                    "edge_id": str(row["edge_id"]),
+                    "run_id": str(row["run_id"]),
+                    "source_id": str(row["source_id"]),
+                    "relation": str(row["relation"]),
+                    "target_id": str(row["target_id"]),
+                    "confidence": float(row["confidence"]),
+                    "rationale": str(row["rationale"]),
+                    "evidence_knowledge_ids": json.loads(
+                        row["evidence_ids_json"]
+                    ),
+                    "created_at": str(row["created_at"]),
+                }
+                for row in edge_rows
+            ],
+            "explorations": [
+                json.loads(row["payload_json"]) for row in exploration_rows
+            ],
+        }
+
+    def expand_knowledge_graph(
+        self,
+        security: SecurityScope,
+        knowledge_ids: list[str],
+        limit: int,
+        min_confidence: float = 0.75,
+    ) -> list[DomainRevision]:
+        seeds = list(dict.fromkeys(str(value) for value in knowledge_ids if str(value)))
+        if not seeds or limit <= 0:
+            return []
+        placeholders = ",".join("?" for _ in seeds)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT connected_id, MAX(confidence) AS confidence
+                FROM (
+                    SELECT target_id AS connected_id, confidence
+                    FROM knowledge_graph_edges
+                    WHERE tenant_id = ? AND security_scope_id = ?
+                      AND confidence >= ? AND source_id IN ({placeholders})
+                    UNION ALL
+                    SELECT source_id AS connected_id, confidence
+                    FROM knowledge_graph_edges
+                    WHERE tenant_id = ? AND security_scope_id = ?
+                      AND confidence >= ? AND target_id IN ({placeholders})
+                )
+                WHERE connected_id NOT IN ({placeholders})
+                GROUP BY connected_id
+                ORDER BY confidence DESC, connected_id
+                LIMIT ?
+                """,
+                [
+                    security.tenant_id,
+                    security.security_scope_id,
+                    float(min_confidence),
+                    *seeds,
+                    security.tenant_id,
+                    security.security_scope_id,
+                    float(min_confidence),
+                    *seeds,
+                    *seeds,
+                    max(1, min(limit, 100)),
+                ],
+            ).fetchall()
+        revisions = [
+            self.get_active_revision(
+                security, "knowledge", str(row["connected_id"])
+            )
+            for row in rows
+        ]
+        return [revision for revision in revisions if revision is not None]
 
     def count(self, object_type: str, security: SecurityScope | None = None) -> int:
         query = "SELECT COUNT(*) AS count FROM revisions WHERE object_type = ?"
@@ -641,7 +1173,96 @@ def _fts_document(payload: dict[str, Any]) -> str:
             )
         elif raw:
             values.append(str(raw))
-    return " ".join(value for value in values if value)
+    return _cjk_tokenize(" ".join(value for value in values if value))
+
+
+def _cjk_tokenize(text: str) -> str:
+    """Split CJK runs into space-separated chars and overlapping bigrams.
+
+    FTS5 unicode61 does not split CJK text, so a whole sentence becomes one
+    token.  Emitting chars and bigrams makes cross-domain Chinese retrieval
+    work with standard FTS infrastructure.
+    """
+    result: list[str] = []
+    for run in re.split(r"([\u3400-\u9fff]+)", text):
+        if re.match(r"[\u3400-\u9fff]", run):
+            result.extend(run)
+            for index in range(len(run) - 1):
+                result.append(run[index : index + 2])
+        elif run:
+            result.append(run)
+    return " ".join(result)
+
+
+def _cjk_query_terms(query: str) -> list[str]:
+    """Extract CJK bigrams (and single chars for short runs) for FTS queries."""
+    terms: list[str] = []
+    for run in re.findall(r"[\u3400-\u9fff]+", query):
+        if len(run) == 1:
+            terms.append(run)
+        for index in range(len(run) - 1):
+            terms.append(run[index : index + 2])
+    return terms
+
+
+def _gap_match_score(query: str, payload: dict[str, Any]) -> float:
+    normalized_query = re.sub(r"\s+", " ", query.casefold()).strip()
+    document = re.sub(
+        r"\s+",
+        " ",
+        " ".join(
+            str(value)
+            for key in (
+                "question",
+                "reason_unresolved",
+                "possible_directions",
+                "missing_evidence",
+                "research_queries",
+                "linking_keys",
+                "source_excerpts",
+            )
+            for value in (
+                payload.get(key, [])
+                if isinstance(payload.get(key, []), (list, tuple, set))
+                else [payload.get(key, "")]
+            )
+            if value
+        ).casefold(),
+    ).strip()
+    if not normalized_query or not document:
+        return 0.0
+    if normalized_query in document:
+        return 10.0
+    linking_keys = [
+        re.sub(r"\s+", " ", str(value).casefold()).strip()
+        for value in payload.get("linking_keys", [])
+        if str(value).strip()
+    ]
+    exact_keys = [
+        value
+        for value in linking_keys
+        if value in normalized_query or normalized_query in value
+    ]
+    if exact_keys:
+        return 8.0 + min(len(exact_keys), 4) / 10
+    identifiers = re.findall(
+        r"\b[A-Za-z][A-Za-z0-9]{1,15}(?:-[A-Za-z0-9]{1,16})+\b",
+        normalized_query,
+    )
+    if identifiers:
+        matched = sum(identifier.casefold() in document for identifier in identifiers)
+        return 6.0 * matched / len(identifiers) if matched == len(identifiers) else 0.0
+    latin_terms = {
+        term for term in re.findall(r"[a-z0-9_-]{3,}", normalized_query) if term
+    }
+    cjk = "".join(re.findall(r"[\u3400-\u9fff]", normalized_query))
+    cjk_bigrams = {cjk[index : index + 2] for index in range(max(0, len(cjk) - 1))}
+    terms = latin_terms | cjk_bigrams
+    if not terms:
+        return 0.0
+    matched = sum(term in document for term in terms)
+    ratio = matched / len(terms)
+    return ratio if ratio >= 0.5 and matched >= min(2, len(terms)) else 0.0
 
 
 def _revision_from_row(row: sqlite3.Row) -> DomainRevision:

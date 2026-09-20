@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -12,6 +12,7 @@ from uka_langgraph.application.ports import (
     ParserRegistryPort,
     RepositoryPort,
     UnderstandingPort,
+    WebSearchPort,
 )
 from uka_langgraph.domain.models import (
     DomainRevision,
@@ -19,9 +20,11 @@ from uka_langgraph.domain.models import (
     EvidenceLocator,
     EvidencePack,
     EvidencePackItem,
+    KnowledgeGapCandidate,
     KnowledgeStatus,
     OperationReceipt,
     SecurityScope,
+    UnderstandingResult,
 )
 from uka_langgraph.domain.taxonomy import (
     canonicalize_domains,
@@ -50,12 +53,22 @@ def scoped_operation_id(
     )
 
 
+def _is_chinese_source(text: str) -> bool:
+    """Keep service-generated epistemic gaps in the source language."""
+    cjk = len(re.findall(r"[\u3400-\u9fff]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    return cjk >= 8 and cjk >= latin
+
+
 @dataclass(slots=True)
 class IngestionService:
     repository: RepositoryPort
     objects: ObjectStorePort
     understanding: UnderstandingPort
     parsers: ParserRegistryPort
+    research: WebSearchPort | None = None
+    research_count: int = 5
+    research_max_queries: int = 4
 
     def provider_health(self) -> dict[str, object]:
         return self.understanding.check_connection()
@@ -165,8 +178,20 @@ class IngestionService:
         return result
 
     def understand(
-        self, *, request_id: str, evidence_ids: list[str], security: SecurityScope
+        self,
+        *,
+        request_id: str,
+        evidence_ids: list[str],
+        security: SecurityScope,
+        target_gap_ids: list[str] | None = None,
     ) -> dict[str, Any]:
+        normalized_target_gap_ids = sorted(
+            {
+                str(gap_id).strip()
+                for gap_id in (target_gap_ids or [])[:8]
+                if str(gap_id).strip()
+            }
+        )
         op_id = scoped_operation_id(security, request_id, "understand", *sorted(evidence_ids))
         if receipt := self.repository.get_receipt(op_id):
             return receipt.result
@@ -175,6 +200,10 @@ class IngestionService:
             "content-addressed-understanding",
             "understand",
             self.understanding.revision,
+            self.research.revision if self.research is not None else "web-search:none",
+            str(self.research_count),
+            str(self.research_max_queries),
+            *normalized_target_gap_ids,
             *sorted(evidence_ids),
         )
         if cached := self.repository.get_receipt(cache_id):
@@ -200,6 +229,7 @@ class IngestionService:
 
         candidate_ids: list[str] = []
         scope_ids: list[str] = []
+        gap_ids: list[str] = []
         warnings: list[str] = []
         for document_evidence_id, fragments in grouped.items():
             document = self.repository.get_evidence(security, document_evidence_id)
@@ -217,8 +247,33 @@ class IngestionService:
                     for fragment in fragments
                 )
             prior_knowledge = self._related_knowledge(security, text)
+            targeted_gaps = self._targeted_gaps(
+                security, normalized_target_gap_ids
+            )
+            related_gaps = self._related_gaps(security, text)
+            prior_gaps = list(
+                {
+                    str(item["gap_id"]): item
+                    for item in [*targeted_gaps, *related_gaps]
+                }.values()
+            )[:8]
             result = self._understand_document(
-                text, document_evidence_id, tuple(prior_knowledge)
+                text,
+                document_evidence_id,
+                tuple(prior_knowledge),
+                tuple(prior_gaps),
+            )
+            result = self._enforce_epistemic_gate(
+                text=text,
+                evidence_id=document_evidence_id,
+                result=result,
+            )
+            result = self._research_unresolved_gaps(
+                text=text,
+                evidence_id=document_evidence_id,
+                security=security,
+                result=result,
+                prior_knowledge=tuple(prior_knowledge),
             )
             warnings.extend(result.warnings)
             document_scope_ids: list[str] = []
@@ -237,6 +292,9 @@ class IngestionService:
                         "domain_ids": list(canonical_domains),
                         "domain_labels": list(labels),
                         "domain_aliases": list(domain_aliases(canonical_domains)),
+                        "domain_hypotheses": [
+                            asdict(item) for item in scope.domain_hypotheses
+                        ],
                         "subjects": list(scope.subjects),
                         "tasks": list(scope.tasks),
                         "preconditions": list(scope.preconditions),
@@ -260,11 +318,30 @@ class IngestionService:
                 scope_ids.append(scope.scope_id)
                 document_scope_ids.append(scope.scope_id)
             for claim in result.claims:
-                claim_evidence_ids = _match_claim_evidence(
-                    claim.content,
-                    claim.source_excerpts,
-                    fragments,
-                    self.objects,
+                claim_evidence_ids = tuple(
+                    sorted(
+                        {
+                            *_match_claim_evidence(
+                                claim.content,
+                                claim.source_excerpts,
+                                fragments,
+                                self.objects,
+                            ),
+                            *(
+                                evidence_id
+                                for evidence_id in claim.evidence_ids
+                                if (
+                                    (stored_evidence := self.repository.get_evidence(
+                                        security, evidence_id
+                                    ))
+                                    is not None
+                                    and stored_evidence.locator is not None
+                                    and stored_evidence.locator.locator_type
+                                    == "web_search_result"
+                                )
+                            ),
+                        }
+                    )
                 )
                 matched_source_text = " ".join(
                     self.objects.read_bytes(fragment.object_ref).decode("utf-8")
@@ -298,6 +375,7 @@ class IngestionService:
                 knowledge_delta = claim.knowledge_delta
                 if derived_ids and knowledge_delta == "new":
                     knowledge_delta = "refines"
+                resolves_gap_ids = tuple(dict.fromkeys(claim.resolves_gap_ids))
                 revision = DomainRevision(
                     object_type="candidate",
                     object_id=claim.candidate_id,
@@ -326,6 +404,7 @@ class IngestionService:
                             asdict(relation) for relation in claim.logical_relations
                         ],
                         "derived_from_knowledge_ids": list(derived_ids),
+                        "resolves_gap_ids": list(resolves_gap_ids),
                         "knowledge_delta": knowledge_delta,
                     },
                     evidence_ids=claim_evidence_ids,
@@ -336,10 +415,116 @@ class IngestionService:
                     scoped_operation_id(security, request_id, "candidate", claim.candidate_id),
                 )
                 candidate_ids.append(claim.candidate_id)
+            for gap in result.gaps:
+                gap_evidence_ids = tuple(
+                    sorted(
+                        {
+                            *fragment_ids,
+                            *(
+                                evidence_id
+                                for evidence_id in gap.research_evidence_ids
+                                if self.repository.get_evidence(security, evidence_id)
+                                is not None
+                            ),
+                        }
+                    )
+                )
+                gap_status = (
+                    gap.research_status
+                    if gap.research_status
+                    in {
+                        "open",
+                        "research_exhausted",
+                        "research_unavailable",
+                        "partially_resolved",
+                    }
+                    else "open"
+                )
+                existing_gap = self.repository.get_revision(
+                    security, "knowledge_gap", gap.gap_id
+                )
+                previous_payload = existing_gap.payload if existing_gap else {}
+                revision = DomainRevision(
+                    object_type="knowledge_gap",
+                    object_id=gap.gap_id,
+                    revision=(existing_gap.revision + 1 if existing_gap else 1),
+                    status=gap_status,
+                    security=security,
+                    payload={
+                        "question": gap.question,
+                        "reason_unresolved": gap.reason_unresolved,
+                        "possible_directions": list(gap.possible_directions),
+                        "missing_evidence": list(gap.missing_evidence),
+                        "research_queries": list(gap.research_queries),
+                        "linking_keys": list(gap.linking_keys),
+                        "confidence": gap.confidence,
+                        "source_excerpts": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get("source_excerpts", []),
+                                    *gap.source_excerpts,
+                                ]
+                            )
+                        ),
+                        "related_knowledge_ids": list(gap.related_knowledge_ids),
+                        "research_status": gap_status,
+                        "research_attempts": [
+                            *previous_payload.get("research_attempts", []),
+                            *gap.research_attempts,
+                        ],
+                        "research_evidence_ids": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get(
+                                        "research_evidence_ids", []
+                                    ),
+                                    *gap.research_evidence_ids,
+                                ]
+                            )
+                        ),
+                        "scope_ids": sorted(set(document_scope_ids)),
+                        "provider_revision": self.understanding.revision,
+                        "resolved_by_knowledge_ids": list(
+                            previous_payload.get("resolved_by_knowledge_ids", [])
+                        ),
+                        "resolution_candidate_ids": list(
+                            dict.fromkeys(
+                                [
+                                    *previous_payload.get(
+                                        "resolution_candidate_ids", []
+                                    ),
+                                    *(
+                                        claim.candidate_id
+                                        for claim in result.claims
+                                        if gap.gap_id in claim.resolves_gap_ids
+                                    ),
+                                ]
+                            )
+                        ),
+                    },
+                    evidence_ids=tuple(
+                        sorted(
+                            {
+                                *(existing_gap.evidence_ids if existing_gap else ()),
+                                *gap_evidence_ids,
+                            }
+                        )
+                    ),
+                    created_at=utc_now(),
+                    parent_revision=(existing_gap.revision if existing_gap else None),
+                )
+                self.repository.put_revision(
+                    revision,
+                    scoped_operation_id(
+                        security, request_id, "knowledge_gap", gap.gap_id
+                    ),
+                )
+                gap_ids.append(gap.gap_id)
 
         result_payload = {
             "candidate_ids": sorted(set(candidate_ids)),
             "scope_ids": sorted(set(scope_ids)),
+            "knowledge_gap_ids": sorted(set(gap_ids)),
             "warnings": sorted(set(warnings)),
             "receipt_ids": [cache_id],
         }
@@ -377,22 +562,415 @@ class IngestionService:
             for revision in related
         ]
 
+    def _enforce_epistemic_gate(
+        self,
+        *,
+        text: str,
+        evidence_id: str,
+        result: UnderstandingResult,
+    ) -> UnderstandingResult:
+        unknown_scope = bool(result.scopes) and all(
+            (scope.domain_ids or scope.domain) == ("unknown",)
+            for scope in result.scopes
+        )
+        supported = []
+        withheld = []
+        for claim in result.claims:
+            critical_uncertainty = (
+                claim.confidence < 0.65
+                or (claim.schema_version >= 2 and not claim.source_excerpts)
+                or (unknown_scope and bool(claim.unknowns))
+            )
+            if critical_uncertainty:
+                withheld.append(claim)
+            else:
+                supported.append(claim)
+        gaps = list(result.gaps)
+        if withheld and not gaps:
+            identifiers = _extract_source_identifiers(text)
+            chinese_source = _is_chinese_source(text)
+            for claim in withheld[:8]:
+                subject = claim.title or claim.content[:240]
+                question = (
+                    f"在安全复用这条经验前，还缺少哪些关键上下文或定义：{subject}？"
+                    if chinese_source
+                    else (
+                        "What critical context or definitions are required before this "
+                        f"experience can be understood safely: {subject}?"
+                    )
+                )
+                linking_keys = tuple(
+                    dict.fromkeys(
+                        [
+                            *identifiers,
+                            *re.findall(r"[A-Za-z0-9_-]{3,}", claim.title)[:8],
+                        ]
+                    )
+                )
+                gaps.append(
+                    KnowledgeGapCandidate(
+                        gap_id=stable_id("gap", evidence_id, question),
+                        question=question,
+                        reason_unresolved=(
+                            "模型生成的综合结论证据不足，关键含义或适用边界尚未得到安全确认。"
+                            if chinese_source
+                            else (
+                                "The model produced a low-support synthesis whose critical "
+                                "meaning or applicability cannot be established safely."
+                            )
+                        ),
+                        possible_directions=(
+                            ("补充未定义术语和指代对象的含义。", "寻找明确写出机制、条件和可核验结果的完整来源。")
+                            if chinese_source
+                            else (
+                                "Obtain definitions for the unidentified terms and referents.",
+                                "Find a complete source that states the mechanism, conditions, "
+                                "and verifiable outcome.",
+                            ),
+                        ),
+                        missing_evidence=tuple(
+                            dict.fromkeys(
+                                [
+                                    *claim.unknowns,
+                                    (
+                                        "来源特定的术语定义和适用边界"
+                                        if chinese_source
+                                        else "A source-specific definition and applicability boundary"
+                                    ),
+                                ]
+                            )
+                        )[:12],
+                        research_queries=tuple(
+                            query[:70]
+                            for query in (
+                                " ".join(identifiers),
+                                (
+                                    f"{claim.title} 术语定义 适用条件"
+                                    if chinese_source
+                                    else f"{claim.title} definitions context"
+                                ),
+                            )
+                            if query.strip()
+                        )[:2],
+                        linking_keys=linking_keys,
+                        confidence=max(0.8, 1.0 - claim.confidence),
+                        source_excerpts=claim.source_excerpts,
+                    )
+                )
+        warnings = tuple(
+            dict.fromkeys(
+                [
+                    *result.warnings,
+                    *(("unsupported_candidate_withheld",) if withheld else ()),
+                ]
+            )
+        )
+        return UnderstandingResult(
+            claims=tuple(supported),
+            scopes=result.scopes,
+            gaps=tuple(gaps),
+            warnings=warnings,
+        )
+
+    def _related_gaps(
+        self, security: SecurityScope, text: str
+    ) -> list[dict[str, Any]]:
+        return [
+            _gap_context(revision)
+            for revision in self.repository.search_open_gaps(security, text[:8_000], 8)
+        ]
+
+    def _targeted_gaps(
+        self, security: SecurityScope, gap_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        targeted: list[dict[str, Any]] = []
+        for gap_id in gap_ids:
+            revision = self.repository.get_revision(
+                security, "knowledge_gap", gap_id
+            )
+            if revision is None or revision.status == "resolved":
+                raise LookupError(f"open knowledge gap not found: {gap_id}")
+            targeted.append(_gap_context(revision))
+        return targeted
+
+    def _research_unresolved_gaps(
+        self,
+        *,
+        text: str,
+        evidence_id: str,
+        security: SecurityScope,
+        result: UnderstandingResult,
+        prior_knowledge: tuple[dict[str, Any], ...],
+    ) -> UnderstandingResult:
+        if not result.gaps:
+            return result
+        if security.classification.casefold() in {
+            "confidential",
+            "prohibited",
+            "restricted",
+            "secret",
+        }:
+            blocked_at = utc_now()
+            blocked_gaps = tuple(
+                replace(
+                    gap,
+                    research_status="research_unavailable",
+                    research_attempts=(
+                        {
+                            "attempt_id": stable_id(
+                                "research", evidence_id, gap.gap_id, "egress-blocked"
+                            ),
+                            "query": "",
+                            "status": "blocked",
+                            "provider_revision": "web-search:egress-blocked",
+                            "result_count": 0,
+                            "evidence_ids": [],
+                            "error_type": "classification_egress_blocked",
+                            "searched_at": blocked_at,
+                        },
+                    ),
+                    research_evidence_ids=(),
+                )
+                for gap in result.gaps
+            )
+            return UnderstandingResult(
+                claims=result.claims,
+                scopes=result.scopes,
+                gaps=blocked_gaps,
+                warnings=tuple(
+                    dict.fromkeys(
+                        [
+                            *result.warnings,
+                            "knowledge_gap_preserved",
+                            "web_research_blocked_by_classification",
+                        ]
+                    )
+                ),
+            )
+        query_gap_ids: dict[str, set[str]] = {}
+        gap_queries: dict[str, tuple[str, ...]] = {}
+        for gap in result.gaps:
+            queries = gap.research_queries or (gap.question,)
+            gap_queries[gap.gap_id] = tuple(
+                normalized
+                for query in queries[:2]
+                if (normalized := " ".join(query.split())[:70])
+            )
+        # Allocate one query to every gap before giving any gap a second query.
+        for query_index in range(2):
+            for gap in result.gaps:
+                queries = gap_queries.get(gap.gap_id, ())
+                if query_index < len(queries):
+                    query_gap_ids.setdefault(queries[query_index], set()).add(
+                        gap.gap_id
+                    )
+                if len(query_gap_ids) >= self.research_max_queries:
+                    break
+            if len(query_gap_ids) >= self.research_max_queries:
+                break
+
+        attempts_by_gap: dict[str, list[dict[str, Any]]] = {
+            gap.gap_id: [] for gap in result.gaps
+        }
+        research_ids_by_gap: dict[str, set[str]] = {
+            gap.gap_id: set() for gap in result.gaps
+        }
+        observations: list[dict[str, Any]] = []
+        for query, related_gap_ids in query_gap_ids.items():
+            batch = (
+                self.research.search(query, count=self.research_count)
+                if self.research is not None
+                else None
+            )
+            batch_status = batch.status if batch is not None else "disabled"
+            provider_revision = (
+                batch.provider_revision if batch is not None else "web-search:disabled"
+            )
+            batch_evidence_ids: list[str] = []
+            if batch is not None:
+                for observation in batch.observations:
+                    web_evidence_id = self._preserve_research_observation(
+                        security=security,
+                        observation=asdict(observation),
+                        provider_revision=provider_revision,
+                    )
+                    batch_evidence_ids.append(web_evidence_id)
+                    observations.append(
+                        {
+                            **asdict(observation),
+                            "evidence_id": web_evidence_id,
+                            "gap_ids": sorted(related_gap_ids),
+                        }
+                    )
+            attempt = {
+                "attempt_id": stable_id(
+                    "research", evidence_id, query, provider_revision
+                ),
+                "query": query,
+                "status": batch_status,
+                "provider_revision": provider_revision,
+                "result_count": len(batch_evidence_ids),
+                "evidence_ids": batch_evidence_ids,
+                "error_type": batch.error_type if batch is not None else "disabled",
+                "searched_at": utc_now(),
+            }
+            for gap_id in related_gap_ids:
+                attempts_by_gap[gap_id].append(attempt)
+                research_ids_by_gap[gap_id].update(batch_evidence_ids)
+
+        completed_observations = bool(observations)
+        reassessed: UnderstandingResult | None = None
+        reassessment_warning = ""
+        if completed_observations:
+            reassess = getattr(self.understanding, "reassess_gaps", None)
+            if callable(reassess):
+                try:
+                    reassessed = reassess(
+                        text,
+                        evidence_id,
+                        tuple(asdict(gap) for gap in result.gaps),
+                        tuple(observations),
+                        prior_knowledge=prior_knowledge,
+                    )
+                except Exception as exc:
+                    reassessment_warning = (
+                        "gap_reassessment_failed:"
+                        f"{getattr(exc, 'code', None) or type(exc).__name__}"
+                    )
+            else:
+                reassessment_warning = "gap_reassessment_unavailable"
+
+        reassessed_gaps = {
+            gap.gap_id: gap for gap in (reassessed.gaps if reassessed else ())
+        }
+        research_claims = tuple(reassessed.claims if reassessed else ())
+        resolved_gap_ids = {
+            gap_id for claim in research_claims for gap_id in claim.resolves_gap_ids
+        }
+        final_gaps: list[KnowledgeGapCandidate] = []
+        for original in result.gaps:
+            updated = reassessed_gaps.get(original.gap_id, original)
+            attempts = tuple(attempts_by_gap.get(original.gap_id, []))
+            evidence_ids = tuple(sorted(research_ids_by_gap.get(original.gap_id, set())))
+            statuses = {str(attempt.get("status")) for attempt in attempts}
+            if original.gap_id in resolved_gap_ids:
+                status = "partially_resolved"
+            elif completed_observations or "no_results" in statuses:
+                status = "research_exhausted"
+            else:
+                status = "research_unavailable"
+            final_gaps.append(
+                KnowledgeGapCandidate(
+                    gap_id=original.gap_id,
+                    question=updated.question,
+                    reason_unresolved=updated.reason_unresolved,
+                    possible_directions=updated.possible_directions,
+                    missing_evidence=updated.missing_evidence,
+                    research_queries=updated.research_queries or original.research_queries,
+                    linking_keys=updated.linking_keys or original.linking_keys,
+                    confidence=updated.confidence,
+                    source_excerpts=updated.source_excerpts or original.source_excerpts,
+                    related_knowledge_ids=(
+                        updated.related_knowledge_ids or original.related_knowledge_ids
+                    ),
+                    research_status=status,
+                    research_attempts=attempts,
+                    research_evidence_ids=evidence_ids,
+                )
+            )
+        warnings = tuple(
+            dict.fromkeys(
+                [
+                    *result.warnings,
+                    *(reassessed.warnings if reassessed else ()),
+                    *(("knowledge_gap_preserved",) if final_gaps else ()),
+                    *((reassessment_warning,) if reassessment_warning else ()),
+                ]
+            )
+        )
+        return UnderstandingResult(
+            claims=tuple((*result.claims, *research_claims)),
+            scopes=result.scopes,
+            gaps=tuple(final_gaps),
+            warnings=warnings,
+        )
+
+    def _preserve_research_observation(
+        self,
+        *,
+        security: SecurityScope,
+        observation: dict[str, Any],
+        provider_revision: str,
+    ) -> str:
+        content = json.dumps(
+            {
+                "title": observation.get("title", ""),
+                "url": observation.get("url", ""),
+                "media": observation.get("media", ""),
+                "published_at": observation.get("published_at"),
+                "snippet": observation.get("snippet", ""),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+        content_hash = hashlib.sha256(content).hexdigest()
+        web_evidence_id = stable_id(
+            "evweb",
+            security.tenant_id,
+            security.security_scope_id,
+            str(observation.get("observation_id", "")),
+            content_hash,
+        )
+        stored = Evidence(
+            evidence_id=web_evidence_id,
+            content_hash=content_hash,
+            media_type="application/vnd.uka.web-search-observation+json",
+            object_ref=self.objects.put_bytes(content),
+            source_type=provider_revision,
+            security=security,
+            created_at=utc_now(),
+            locator=EvidenceLocator(
+                locator_type="web_search_result",
+                position={
+                    "query": str(observation.get("query", ""))[:70],
+                    "rank": int(observation.get("rank", 0)),
+                    "url": str(observation.get("url", ""))[:2_000],
+                },
+                fragment_hash=content_hash,
+            ),
+        )
+        self.repository.put_evidence(stored)
+        return web_evidence_id
+
     def _understand_document(
         self,
         text: str,
         evidence_id: str,
         prior_knowledge: tuple[dict[str, Any], ...],
+        prior_gaps: tuple[dict[str, Any], ...],
     ):
         try:
             return self.understanding.understand(
-                text, evidence_id, prior_knowledge=prior_knowledge
+                text,
+                evidence_id,
+                prior_knowledge=prior_knowledge,
+                prior_gaps=prior_gaps,
             )
         except TypeError as exc:
             # Keep third-party v1 providers usable while the public provider contract
             # migrates to retrieval-augmented document understanding.
-            if "prior_knowledge" not in str(exc):
-                raise
-            return self.understanding.understand(text, evidence_id)
+            if "prior_gaps" in str(exc):
+                try:
+                    return self.understanding.understand(
+                        text, evidence_id, prior_knowledge=prior_knowledge
+                    )
+                except TypeError as legacy_exc:
+                    if "prior_knowledge" not in str(legacy_exc):
+                        raise
+                    return self.understanding.understand(text, evidence_id)
+            if "prior_knowledge" in str(exc):
+                return self.understanding.understand(text, evidence_id)
+            raise
 
     def evaluate(
         self,
@@ -400,9 +978,17 @@ class IngestionService:
         security: SecurityScope,
         candidate_ids: list[str],
         scope_ids: list[str],
+        gap_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         if not candidate_ids:
-            return {"decision": "hold", "reason": "no_supported_candidates"}
+            return {
+                "decision": "hold",
+                "reason": (
+                    "knowledge_gap_preserved"
+                    if gap_ids
+                    else "no_supported_candidates"
+                ),
+            }
         if not scope_ids:
             return {"decision": "review", "reason": "scope_missing"}
         scopes = [
@@ -456,6 +1042,7 @@ class IngestionService:
 
         knowledge_ids: list[str] = []
         evolution_ids: list[str] = []
+        resolved_gap_ids: list[str] = []
         status = KnowledgeStatus.ACTIVE if approved else KnowledgeStatus.EVALUATED
         scopes = [
             self.repository.get_revision(security, "scope", scope_id) for scope_id in scope_ids
@@ -511,10 +1098,14 @@ class IngestionService:
                         **_experience_payload(candidate.payload),
                         "scope_id": scope_id,
                         "candidate_id": candidate_id,
+                        "activation_review_completed": approved,
                         "learning": {
                             "mode": "retrieval_augmented_synthesis",
                             "knowledge_delta": knowledge_delta,
                             "derived_from_knowledge_ids": derived_from,
+                            "resolves_gap_ids": list(
+                                candidate.payload.get("resolves_gap_ids", [])
+                            ),
                             "automatic_activation": False,
                             "governance": "human_approval",
                             "evolution_candidate_id": evolution_id or None,
@@ -528,6 +1119,61 @@ class IngestionService:
                 revision = existing
             if approved:
                 self.repository.activate_revision(revision)
+                for gap_id in candidate.payload.get("resolves_gap_ids", []):
+                    gap = self.repository.get_revision(
+                        security, "knowledge_gap", str(gap_id)
+                    )
+                    if gap is None:
+                        continue
+                    if gap.status == "resolved":
+                        resolved_gap_ids.append(gap.object_id)
+                        continue
+                    gap_revision = DomainRevision(
+                        object_type="knowledge_gap",
+                        object_id=gap.object_id,
+                        revision=self.repository.next_revision(
+                            security, "knowledge_gap", gap.object_id
+                        ),
+                        parent_revision=gap.revision,
+                        status="resolved",
+                        security=security,
+                        payload={
+                            **gap.payload,
+                            "research_status": "resolved",
+                            "resolved_by_knowledge_ids": sorted(
+                                {
+                                    *gap.payload.get(
+                                        "resolved_by_knowledge_ids", []
+                                    ),
+                                    knowledge_id,
+                                }
+                            ),
+                            "resolution_candidate_ids": sorted(
+                                {
+                                    *gap.payload.get(
+                                        "resolution_candidate_ids", []
+                                    ),
+                                    candidate_id,
+                                }
+                            ),
+                            "resolved_at": utc_now(),
+                        },
+                        evidence_ids=tuple(
+                            sorted({*gap.evidence_ids, *revision.evidence_ids})
+                        ),
+                        created_at=utc_now(),
+                    )
+                    self.repository.put_revision(
+                        gap_revision,
+                        scoped_operation_id(
+                            security,
+                            request_id,
+                            "resolve_knowledge_gap",
+                            gap.object_id,
+                            knowledge_id,
+                        ),
+                    )
+                    resolved_gap_ids.append(gap.object_id)
             if evolution_id:
                 evolution = DomainRevision(
                     object_type="evolution",
@@ -559,6 +1205,7 @@ class IngestionService:
         result = {
             "knowledge_ids": sorted(set(knowledge_ids)),
             "evolution_ids": sorted(set(evolution_ids)),
+            "resolved_knowledge_gap_ids": sorted(set(resolved_gap_ids)),
             "status": status.value,
             "receipt_ids": [op_id],
         }
@@ -1096,13 +1743,48 @@ class RetrievalService:
         if not query.strip():
             return _empty_evidence_pack("empty_query")
         requested_limit = max(1, min(limit, 50))
+        open_gaps = self.repository.search_open_gaps(
+            security, query, requested_limit
+        )
         revisions = self.repository.search_active_knowledge(security, query, 1000)
+        graph_expanded_ids: set[str] = set()
+        if revisions:
+            seed_count = min(len(revisions), max(1, min(requested_limit, 4)))
+            expanded = self.repository.expand_knowledge_graph(
+                security,
+                [item.object_id for item in revisions[:seed_count]],
+                requested_limit,
+                0.75,
+            )
+            existing_ids = {item.object_id for item in revisions}
+            graph_expanded_ids = {
+                item.object_id for item in expanded if item.object_id not in existing_ids
+            }
+            merged: list[DomainRevision] = []
+            seen: set[str] = set()
+            for item in [*revisions[:seed_count], *expanded, *revisions[seed_count:]]:
+                if item.object_id in seen:
+                    continue
+                seen.add(item.object_id)
+                merged.append(item)
+            revisions = merged
+        # Open gaps must not mask already established knowledge.  Return a
+        # pure gap refusal only when there is no active match, or when the
+        # query is explicitly asking one of the unresolved gap questions.
+        if open_gaps and not revisions:
+            return _knowledge_gap_evidence_pack(open_gaps)
+        if open_gaps and revisions and any(
+            _normalized_question(query)
+            == _normalized_question(str(gap.payload.get("question", "")))
+            for gap in open_gaps
+        ):
+            return _knowledge_gap_evidence_pack(open_gaps)
         if not revisions:
             return _empty_evidence_pack("no_active_scope_match")
         effective_as_of = _parse_time(as_of) if as_of else datetime.now(UTC)
         items: list[EvidencePackItem] = []
         conflicts: list[dict[str, Any]] = []
-        review_required = False
+        review_items: list[dict[str, str]] = []
         for revision in revisions:
             scope_id = revision.payload.get("scope_id")
             scope_revision = (
@@ -1116,8 +1798,33 @@ class RetrievalService:
             if not _scope_matches(scope, query_scope or {}, effective_as_of):
                 continue
             risk = str(scope.get("risk", "normal"))
-            review_required = review_required or bool(scope.get("review_required"))
-            review_required = review_required or risk in {"high", "prohibited"}
+            # An active knowledge revision has already passed its activation
+            # gate, so the scope's historical review flag is resolved.
+            scope_review_open = bool(scope.get("review_required")) and not bool(
+                revision.payload.get("activation_review_completed", False)
+            )
+            # `sensitive` remains a labelling concern.  Human-approved high
+            # risk has passed its explicit gate and is safe to return; other
+            # high/prohibited entries are isolated rather than allowed to veto
+            # an otherwise evidence-backed answer.
+            if (
+                risk in {"high", "prohibited"} or scope_review_open
+            ) and not bool(revision.payload.get("activation_review_completed", False)):
+                review_items.append(
+                    {
+                        "knowledge_id": revision.object_id,
+                        "risk_level": risk,
+                        "conflict_status": str(
+                            revision.payload.get("conflict_status", "clean")
+                        ),
+                        "reason": (
+                            "risk_level_review"
+                            if risk in {"high", "prohibited"}
+                            else "scope_review_required"
+                        ),
+                    }
+                )
+                continue
             if revision.payload.get("conflict_status") == "open":
                 conflicts.append(
                     {
@@ -1173,7 +1880,13 @@ class RetrievalService:
                 )
             )
         if not items:
-            return _empty_evidence_pack("scope_or_time_mismatch")
+            if review_items:
+                return _review_required_evidence_pack(review_items, open_gaps)
+            return (
+                _knowledge_gap_evidence_pack(open_gaps)
+                if open_gaps
+                else _empty_evidence_pack("scope_or_time_mismatch")
+            )
         selected_ids = {item.knowledge_id for item in items}
         selected_revisions = [
             revision for revision in revisions if revision.object_id in selected_ids
@@ -1197,18 +1910,30 @@ class RetrievalService:
                         }
                     )
         selected_items = items[:requested_limit]
-        status = "review_required" if conflicts or review_required else "answered"
+        status = (
+            "answered_with_gaps"
+            if open_gaps
+            else "answered"
+        )
+        if conflicts:
+            status = "review_required"
+        review_required = bool(review_items)
         answer = (
             "unknown"
             if status == "review_required"
             else "\n".join(item.content for item in selected_items)
         )
+        unknowns = ("related_knowledge_gaps_open",) if open_gaps else ()
+        if review_required:
+            unknowns = ("human_review_required", *unknowns)
         pack = EvidencePack(
             status=status,
             answer=answer,
             items=tuple(selected_items),
             conflicts=tuple(conflicts),
-            unknowns=("human_review_required",) if status == "review_required" else (),
+            unknowns=unknowns,
+            requires_human_review=review_required,
+            knowledge_gaps=_gap_views(open_gaps),
         )
         evidence_ids = sorted(
             {
@@ -1217,13 +1942,22 @@ class RetrievalService:
                 for evidence in item.evidence
             }
         )
-        return {
+        response = {
             "answer": answer,
             "status": status,
             "knowledge_ids": [item.knowledge_id for item in selected_items],
+            "knowledge_gap_ids": [gap.object_id for gap in open_gaps],
             "evidence_ids": evidence_ids,
             "evidence_pack": asdict(pack),
+            "graph_expanded_knowledge_ids": [
+                item.knowledge_id
+                for item in selected_items
+                if item.knowledge_id in graph_expanded_ids
+            ],
         }
+        if review_items:
+            response["review_candidates"] = review_items
+        return response
 
 
 def _empty_evidence_pack(reason: str) -> dict[str, Any]:
@@ -1237,6 +1971,176 @@ def _empty_evidence_pack(reason: str) -> dict[str, Any]:
         "evidence_ids": [],
         "evidence_pack": asdict(pack),
     }
+
+
+def _knowledge_gap_evidence_pack(
+    gaps: list[DomainRevision],
+) -> dict[str, Any]:
+    gap_views = _gap_views(gaps)
+    missing = tuple(
+        dict.fromkeys(
+            [
+                "knowledge_gap_open",
+                *(
+                    str(item)
+                    for gap in gaps
+                    for item in gap.payload.get("missing_evidence", [])
+                ),
+            ]
+        )
+    )
+    pack = EvidencePack(
+        status="abstained",
+        answer="unknown",
+        items=(),
+        unknowns=missing,
+        knowledge_gaps=gap_views,
+    )
+    return {
+        "answer": "unknown",
+        "status": "abstained",
+        "knowledge_ids": [],
+        "knowledge_gap_ids": [gap.object_id for gap in gaps],
+        "evidence_ids": sorted(
+            {evidence_id for gap in gaps for evidence_id in gap.evidence_ids}
+        ),
+        "evidence_pack": asdict(pack),
+    }
+
+
+def _review_required_evidence_pack(
+    review_items: list[dict[str, str]],
+    gaps: list[DomainRevision],
+) -> dict[str, Any]:
+    pack = EvidencePack(
+        status="review_required",
+        answer="unknown",
+        items=(),
+        unknowns=("human_review_required",),
+        requires_human_review=True,
+        knowledge_gaps=_gap_views(gaps),
+    )
+    return {
+        "answer": "unknown",
+        "status": "review_required",
+        "knowledge_ids": [item["knowledge_id"] for item in review_items],
+        "knowledge_gap_ids": [gap.object_id for gap in gaps],
+        "evidence_ids": [],
+        "evidence_pack": asdict(pack),
+        "review_candidates": review_items,
+    }
+
+
+def _gap_context(revision: DomainRevision) -> dict[str, Any]:
+    return {
+        "gap_id": revision.object_id,
+        "question": revision.payload.get("question", ""),
+        "reason_unresolved": revision.payload.get("reason_unresolved", ""),
+        "possible_directions": revision.payload.get("possible_directions", []),
+        "missing_evidence": revision.payload.get("missing_evidence", []),
+        "research_queries": revision.payload.get("research_queries", []),
+        "linking_keys": revision.payload.get("linking_keys", []),
+        "confidence": revision.payload.get("confidence", 0.0),
+        "source_excerpts": revision.payload.get("source_excerpts", []),
+        "related_knowledge_ids": revision.payload.get("related_knowledge_ids", []),
+        "research_status": revision.status,
+        "research_attempts": revision.payload.get("research_attempts", []),
+        "research_evidence_ids": revision.payload.get("research_evidence_ids", []),
+    }
+
+
+def _gap_views(gaps: list[DomainRevision]) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "gap_id": gap.object_id,
+            "revision": gap.revision,
+            "status": gap.status,
+            "question": str(gap.payload.get("question", "")),
+            "reason_unresolved": str(
+                gap.payload.get("reason_unresolved", "")
+            ),
+            "possible_directions": [
+                str(item)
+                for item in gap.payload.get("possible_directions", [])
+            ],
+            "missing_evidence": [
+                str(item) for item in gap.payload.get("missing_evidence", [])
+            ],
+            "linking_keys": [
+                str(item) for item in gap.payload.get("linking_keys", [])
+            ],
+            "research_status": str(
+                gap.payload.get("research_status", gap.status)
+            ),
+            "research_attempt_count": len(
+                gap.payload.get("research_attempts", [])
+            ),
+        }
+        for gap in gaps
+    )
+
+
+def _query_targets_gap(query: str, payload: dict[str, Any]) -> bool:
+    normalized = re.sub(r"\s+", " ", query.casefold()).strip()
+    identifiers = re.findall(
+        r"\b[A-Za-z][A-Za-z0-9]{1,15}(?:-[A-Za-z0-9]{1,16})+\b", normalized
+    )
+    remainder = normalized
+    for identifier in identifiers:
+        remainder = remainder.replace(identifier.casefold(), " ")
+    linking_keys = [
+        re.sub(r"\s+", " ", str(value).casefold()).strip()
+        for value in payload.get("linking_keys", [])
+        if str(value).strip()
+    ]
+    if any(
+        key in remainder
+        for key in linking_keys
+        if key not in {identifier.casefold() for identifier in identifiers}
+        and len(key) >= 4
+    ):
+        return True
+    stopwords = {
+        "what",
+        "when",
+        "where",
+        "which",
+        "this",
+        "that",
+        "with",
+        "from",
+        "about",
+        "knowledge",
+        "experience",
+    }
+    terms = {
+        term
+        for term in re.findall(r"[a-z0-9_]{4,}", remainder)
+        if term not in stopwords
+    }
+    gap_text = " ".join(
+        [
+            str(payload.get("question", "")),
+            str(payload.get("reason_unresolved", "")),
+            " ".join(linking_keys),
+        ]
+    ).casefold()
+    if terms and len(terms) >= 2:
+        matched = sum(term in gap_text for term in terms)
+        if matched >= 2 and matched / len(terms) >= 0.5:
+            return True
+    cjk = "".join(re.findall(r"[\u3400-\u9fff]", remainder))
+    if len(cjk) >= 4:
+        bigrams = {cjk[index : index + 2] for index in range(len(cjk) - 1)}
+        matched = sum(term in gap_text for term in bigrams)
+        return matched >= 2 and matched / len(bigrams) >= 0.5
+    return False
+
+
+def _normalized_question(value: str) -> str:
+    text = re.sub(r"^\s*[“”\"']+|[“”\"']+\s*$", "", value.casefold().strip())
+    text = re.sub(r"\s+", " ", text)
+    return text.strip("？?。.！!，,")
 
 
 def _normalized_content(payload: dict[str, Any]) -> str:
@@ -1551,6 +2455,7 @@ class ServiceContainer:
     corrections: CorrectionService
     lifecycle: LifecycleService
     retrieval: RetrievalService
+    clustering: Any
 
 
 def safe_sentences(text: str) -> list[str]:

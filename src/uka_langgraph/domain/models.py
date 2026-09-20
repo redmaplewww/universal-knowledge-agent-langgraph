@@ -62,6 +62,20 @@ class LogicalRelation:
 
 
 @dataclass(frozen=True, slots=True)
+class DomainHypothesis:
+    domain_id: str
+    probability: float
+    rationale: str = ""
+    missing_information: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.domain_id.strip():
+            raise ValueError("domain hypothesis requires domain_id")
+        if not 0.0 <= self.probability <= 1.0:
+            raise ValueError("domain hypothesis probability must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimCandidate:
     candidate_id: str
     content: str
@@ -81,6 +95,7 @@ class ClaimCandidate:
     source_excerpts: tuple[str, ...] = ()
     logical_relations: tuple[LogicalRelation, ...] = ()
     derived_from_knowledge_ids: tuple[str, ...] = ()
+    resolves_gap_ids: tuple[str, ...] = ()
     knowledge_delta: str = "new"
     schema_version: int = 1
 
@@ -107,6 +122,7 @@ class ApplicabilityScope:
     risk: RiskLevel = RiskLevel.NORMAL
     confidence: float = 0.0
     unknowns: tuple[str, ...] = ()
+    domain_hypotheses: tuple[DomainHypothesis, ...] = ()
     revision: int = 1
 
     @property
@@ -163,7 +179,114 @@ class OperationReceipt:
 class UnderstandingResult:
     claims: tuple[ClaimCandidate, ...]
     scopes: tuple[ApplicabilityScope, ...]
+    gaps: tuple[KnowledgeGapCandidate, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeGapCandidate:
+    gap_id: str
+    question: str
+    reason_unresolved: str
+    possible_directions: tuple[str, ...]
+    missing_evidence: tuple[str, ...]
+    research_queries: tuple[str, ...]
+    linking_keys: tuple[str, ...]
+    confidence: float
+    source_excerpts: tuple[str, ...] = ()
+    related_knowledge_ids: tuple[str, ...] = ()
+    research_status: str = "pending"
+    research_attempts: tuple[dict[str, Any], ...] = ()
+    research_evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.question.strip():
+            raise ValueError("knowledge gap question is required")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class WebSearchObservation:
+    observation_id: str
+    query: str
+    title: str
+    url: str
+    snippet: str
+    media: str = ""
+    published_at: str | None = None
+    rank: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class WebSearchBatch:
+    query: str
+    status: str
+    observations: tuple[WebSearchObservation, ...] = ()
+    provider_revision: str = "disabled"
+    error_type: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClusterCandidate:
+    cluster_key: str
+    name: str
+    summary: str
+    member_knowledge_ids: tuple[str, ...]
+    domain_hypotheses: tuple[DomainHypothesis, ...]
+    keywords: tuple[str, ...] = ()
+    missing_information: tuple[str, ...] = ()
+    cross_domain_score: float = 0.0
+    confidence: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.cluster_key.strip() or not self.name.strip():
+            raise ValueError("cluster key and name are required")
+        if not self.member_knowledge_ids:
+            raise ValueError("cluster must have at least one member")
+        for value in (self.cross_domain_score, self.confidence):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError("cluster scores must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeGraphEdgeCandidate:
+    source_id: str
+    relation: str
+    target_id: str
+    confidence: float
+    rationale: str
+    evidence_knowledge_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.source_id.strip() or not self.target_id.strip():
+            raise ValueError("knowledge graph edge endpoints are required")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("edge confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class ExplorationCandidate:
+    title: str
+    question: str
+    domain_hypotheses: tuple[DomainHypothesis, ...]
+    related_knowledge_ids: tuple[str, ...]
+    missing_information: tuple[str, ...]
+    priority: float
+
+    def __post_init__(self) -> None:
+        if not self.question.strip():
+            raise ValueError("exploration question is required")
+        if not 0.0 <= self.priority <= 1.0:
+            raise ValueError("exploration priority must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class ClusteringResult:
+    clusters: tuple[ClusterCandidate, ...]
+    edges: tuple[KnowledgeGraphEdgeCandidate, ...]
+    explorations: tuple[ExplorationCandidate, ...] = ()
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,3 +319,5 @@ class EvidencePack:
     items: tuple[EvidencePackItem, ...]
     conflicts: tuple[dict[str, Any], ...] = ()
     unknowns: tuple[str, ...] = ()
+    knowledge_gaps: tuple[dict[str, Any], ...] = ()
+    requires_human_review: bool = False

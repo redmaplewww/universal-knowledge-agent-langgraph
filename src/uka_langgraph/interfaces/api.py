@@ -27,11 +27,27 @@ class IngestBody(SecurityRequest):
     request_id: str | None = None
 
 
+class GapSupplementBody(SecurityRequest):
+    evidence_text: str = Field(min_length=1, max_length=1_000_000)
+    source_note: str | None = Field(default=None, max_length=2_000)
+    classification: str = "internal"
+    thread_id: str | None = None
+
+
 class RetrieveBody(SecurityRequest):
     query: str = Field(min_length=1, max_length=8_000)
     query_scope: dict[str, Any] = Field(default_factory=dict)
     as_of: str | None = None
     limit: int = Field(default=5, ge=1, le=50)
+
+
+class ClusteringBody(SecurityRequest):
+    batch_size: int = Field(default=24, ge=2, le=64)
+    coverage_ratio: float = Field(default=0.4, ge=0, le=1)
+    uncertainty_ratio: float = Field(default=0.3, ge=0, le=1)
+    bridge_ratio: float = Field(default=0.2, ge=0, le=1)
+    replay_ratio: float = Field(default=0.1, ge=0, le=1)
+    thread_id: str | None = None
 
 
 class CorrectionBody(SecurityRequest):
@@ -69,7 +85,7 @@ def create_app(
     agent = UniversalKnowledgeAgent(settings, project_root=project_root)
     app = FastAPI(
         title="Universal Knowledge Agent",
-        version="0.2.1",
+        version="0.4.0",
         description="Evidence-first local LangGraph knowledge agent API",
     )
     app.add_middleware(
@@ -103,6 +119,22 @@ def create_app(
             request_id=body.request_id,
         )
 
+    @app.post("/v1/knowledge-gaps/{gap_id}/supplements")
+    def supplement_knowledge_gap(
+        gap_id: str, body: GapSupplementBody
+    ) -> dict[str, Any]:
+        return _call(
+            agent.supplement_knowledge_gap,
+            gap_id,
+            body.evidence_text,
+            tenant_id=body.tenant_id,
+            security_scope_id=body.security_scope_id,
+            actor_id=body.actor_id,
+            classification=body.classification,
+            source_note=body.source_note,
+            thread_id=body.thread_id,
+        )
+
     @app.post("/v1/retrieve")
     def retrieve(body: RetrieveBody) -> dict[str, Any]:
         return _call(
@@ -116,6 +148,43 @@ def create_app(
             limit=body.limit,
         )
 
+    @app.post("/v1/clustering/runs")
+    def run_clustering(body: ClusteringBody) -> dict[str, Any]:
+        return _call(
+            agent.cluster_knowledge,
+            tenant_id=body.tenant_id,
+            security_scope_id=body.security_scope_id,
+            actor_id=body.actor_id,
+            batch_size=body.batch_size,
+            coverage_ratio=body.coverage_ratio,
+            uncertainty_ratio=body.uncertainty_ratio,
+            bridge_ratio=body.bridge_ratio,
+            replay_ratio=body.replay_ratio,
+            thread_id=body.thread_id,
+        )
+
+    @app.get("/v1/clusters")
+    def list_clusters(
+        tenant_id: str, security_scope_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return _call(
+            agent.list_clusters,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
+        )
+
+    @app.get("/v1/knowledge-graph")
+    def knowledge_graph(
+        tenant_id: str, security_scope_id: str, limit: int = 1000
+    ) -> dict[str, Any]:
+        return _call(
+            agent.knowledge_graph,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
+        )
+
     @app.get("/v1/knowledge")
     def list_knowledge(
         tenant_id: str, security_scope_id: str, limit: int = 100, domain: str | None = None
@@ -126,6 +195,17 @@ def create_app(
             security_scope_id=security_scope_id,
             limit=limit,
             domain=domain,
+        )
+
+    @app.get("/v1/knowledge-gaps")
+    def list_knowledge_gaps(
+        tenant_id: str, security_scope_id: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return _call(
+            agent.list_knowledge_gaps,
+            tenant_id=tenant_id,
+            security_scope_id=security_scope_id,
+            limit=limit,
         )
 
     @app.post("/v1/corrections")

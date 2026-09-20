@@ -6,6 +6,7 @@ from uka_langgraph.orchestration.context import RuntimeContext
 from uka_langgraph.orchestration.nodes import finalize_node, intake_node
 from uka_langgraph.orchestration.state import WorkflowState
 from uka_langgraph.orchestration.subgraphs import (
+    build_clustering_subgraph,
     build_correction_subgraph,
     build_evolution_subgraph,
     build_ingestion_subgraph,
@@ -22,6 +23,7 @@ def build_root_graph(checkpointer=None):
     builder.add_node("skill", build_skill_subgraph())
     builder.add_node("evolution", build_evolution_subgraph())
     builder.add_node("retrieval", build_retrieval_subgraph())
+    builder.add_node("clustering", build_clustering_subgraph())
     builder.add_node("finalize", finalize_node)
     builder.add_edge(START, "intake")
     builder.add_conditional_edges(
@@ -33,11 +35,18 @@ def build_root_graph(checkpointer=None):
             "build_skill": "skill",
             "evolve": "evolution",
             "retrieve": "retrieval",
+            "cluster": "clustering",
             "finalize": "finalize",
         },
     )
-    for node in ("ingestion", "correction", "skill", "evolution", "retrieval"):
+    for node in (
+        "ingestion",
+        "correction",
+        "skill",
+        "evolution",
+        "retrieval",
+        "clustering",
+    ):
         builder.add_edge(node, "finalize")
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
-

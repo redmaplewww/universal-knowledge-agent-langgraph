@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -144,5 +145,111 @@ def test_high_risk_or_conflicted_knowledge_requires_review(settings) -> None:
         )
         assert result["status"] == "review_required"
         assert result["response"]["answer"] == "unknown"
-        assert result["response"]["evidence_pack"]["conflicts"]
+        assert result["response"]["review_candidates"] == [
+            {
+                "knowledge_id": knowledge.object_id,
+                "risk_level": "high",
+                "conflict_status": "open",
+                "reason": "risk_level_review",
+            }
+        ]
 
+
+def test_high_risk_knowledge_is_isolated_without_masking_normal_knowledge(settings) -> None:
+    security = SecurityScope("tenant-a", "private")
+    with AgentRuntime(settings) as runtime:
+        risky_scope = DomainRevision(
+            object_type="scope",
+            object_id="scope-high-isolated",
+            revision=1,
+            status="evaluated",
+            security=security,
+            payload={
+                "domain": ["medical"],
+                "domain_ids": ["medical"],
+                "domain_labels": ["Medical"],
+                "tasks": ["treatment"],
+                "risk": "high",
+                "confidence": 0.9,
+                "valid_from": datetime.now(UTC).replace(year=2020).isoformat(),
+                "valid_until": None,
+            },
+            evidence_ids=(),
+            created_at=utc_now(),
+        )
+        normal_scope = replace(
+            risky_scope,
+            object_id="scope-normal-isolated",
+            status="evaluated",
+            payload={
+                "domain": ["mathematics"],
+                "domain_ids": ["mathematics"],
+                "domain_labels": ["Mathematics"],
+                "risk": "normal",
+                "confidence": 0.9,
+                "valid_from": datetime.now(UTC).replace(year=2020).isoformat(),
+                "valid_until": None,
+            },
+        )
+        risky_knowledge = DomainRevision(
+            object_type="knowledge",
+            object_id="kn-high-isolated",
+            revision=1,
+            status="active",
+            security=security,
+            payload={
+                "content": "Medication dosage requires clinician review.",
+                "confidence": 0.9,
+                "scope_id": risky_scope.object_id,
+                "conflict_status": "open",
+            },
+            evidence_ids=(),
+            created_at=utc_now(),
+        )
+        normal_knowledge = replace(
+            risky_knowledge,
+            object_id="kn-normal-isolated",
+            payload={
+                "content": "勾股定理说明直角三角形斜边平方等于两条直角边平方和。",
+                "confidence": 0.9,
+                "scope_id": normal_scope.object_id,
+                "conflict_status": "clean",
+            },
+        )
+        for scope in (risky_scope, normal_scope):
+            runtime.services.repository.put_revision(
+                scope, f"op-{scope.object_id}"
+            )
+        for knowledge in (risky_knowledge, normal_knowledge):
+            runtime.services.repository.put_revision(
+                knowledge, f"op-{knowledge.object_id}"
+            )
+            runtime.services.repository.activate_revision(knowledge)
+
+        mixed = runtime.services.retrieval.retrieve(
+            security=security,
+            query="勾股定理 Medication dosage",
+            limit=5,
+            query_scope=None,
+        )
+        assert mixed["status"] == "answered"
+        assert "勾股定理" in mixed["answer"]
+        assert mixed["knowledge_ids"] == [normal_knowledge.object_id]
+        assert mixed["review_candidates"] == [
+            {
+                "knowledge_id": risky_knowledge.object_id,
+                "risk_level": "high",
+                "conflict_status": "open",
+                "reason": "risk_level_review",
+            }
+        ]
+
+        only_risky = runtime.services.retrieval.retrieve(
+            security=security,
+            query="Medication dosage",
+            limit=5,
+            query_scope={"domain": "medical", "task": "treatment"},
+        )
+        assert only_risky["status"] == "review_required"
+        assert only_risky["answer"] == "unknown"
+        assert only_risky["review_candidates"][0]["reason"] == "risk_level_review"

@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from uka_langgraph.domain.models import (
+    ClusteringResult,
     DomainRevision,
     Evidence,
     OperationReceipt,
     ParsedFragment,
     SecurityScope,
     UnderstandingResult,
+    WebSearchBatch,
 )
 
 
@@ -61,6 +63,61 @@ class RepositoryPort(Protocol):
         self, security: SecurityScope, query: str, limit: int
     ) -> list[DomainRevision]: ...
 
+    def list_open_gaps(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[DomainRevision]: ...
+
+    def search_open_gaps(
+        self, security: SecurityScope, query: str, limit: int
+    ) -> list[DomainRevision]: ...
+
+    def get_sampling_stats(
+        self, security: SecurityScope
+    ) -> dict[str, dict[str, Any]]: ...
+
+    def record_clustering_run(
+        self,
+        security: SecurityScope,
+        run_id: str,
+        provider_revision: str,
+        sampling: dict[str, Any],
+        result: dict[str, Any],
+        created_at: str,
+    ) -> None: ...
+
+    def upsert_sampling_stats(
+        self,
+        security: SecurityScope,
+        rows: list[dict[str, Any]],
+        sampled_at: str,
+    ) -> None: ...
+
+    def replace_cluster_index(
+        self,
+        security: SecurityScope,
+        run_id: str,
+        clusters: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+        explorations: list[dict[str, Any]],
+        created_at: str,
+    ) -> None: ...
+
+    def list_clusters(
+        self, security: SecurityScope, limit: int = 100
+    ) -> list[dict[str, Any]]: ...
+
+    def graph_snapshot(
+        self, security: SecurityScope, limit: int = 1000
+    ) -> dict[str, Any]: ...
+
+    def expand_knowledge_graph(
+        self,
+        security: SecurityScope,
+        knowledge_ids: list[str],
+        limit: int,
+        min_confidence: float = 0.75,
+    ) -> list[DomainRevision]: ...
+
     def count(self, object_type: str, security: SecurityScope | None = None) -> int: ...
 
     def record_event(
@@ -94,9 +151,31 @@ class UnderstandingPort(Protocol):
         text: str,
         evidence_id: str,
         prior_knowledge: tuple[dict[str, Any], ...] = (),
+        prior_gaps: tuple[dict[str, Any], ...] = (),
+    ) -> UnderstandingResult: ...
+
+    def reassess_gaps(
+        self,
+        text: str,
+        evidence_id: str,
+        gaps: tuple[dict[str, Any], ...],
+        research_observations: tuple[dict[str, Any], ...],
+        prior_knowledge: tuple[dict[str, Any], ...] = (),
     ) -> UnderstandingResult: ...
 
     def check_connection(self) -> dict[str, object]: ...
+
+    def cluster_knowledge(
+        self,
+        knowledge: tuple[dict[str, Any], ...],
+        gaps: tuple[dict[str, Any], ...] = (),
+    ) -> ClusteringResult: ...
+
+
+class WebSearchPort(Protocol):
+    revision: str
+
+    def search(self, query: str, *, count: int = 5) -> WebSearchBatch: ...
 
 
 class ParserPort(Protocol):

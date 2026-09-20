@@ -35,6 +35,7 @@ def intake_node(
         "build_skill",
         "evolve",
         "retrieve",
+        "cluster",
     }:
         errors.append("unsupported_intent")
     return {
@@ -83,4 +84,3 @@ def approval_interrupt(
 def evaluation_id(state: WorkflowState, label: str) -> str:
     material = f"{state['request_id']}:{label}".encode()
     return f"eval_{hashlib.sha256(material).hexdigest()[:24]}"
-

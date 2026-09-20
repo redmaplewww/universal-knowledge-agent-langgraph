@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f4f8f7" />
     <title>Universal Knowledge Agent · Control Room</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260920-llm-wiki-graph" />
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -34,7 +34,7 @@
         </div>
         <div class="hero-orbit" aria-hidden="true">
           <div class="orbit-ring ring-large"></div><div class="orbit-ring ring-small"></div>
-          <div class="orbit-core"><span>UKA</span><small>0.2.1</small></div>
+          <div class="orbit-core"><span>UKA</span><small>0.4.0</small></div>
           <span class="orbit-node node-a">FINANCE</span><span class="orbit-node node-b">MEDICAL</span><span class="orbit-node node-c">SOFTWARE</span>
         </div>
       </section>
@@ -43,7 +43,7 @@
         <article class="metric-card accent-cyan"><span class="metric-label">PROVIDER MODE</span><strong id="metric-mode">—</strong><small id="metric-model">正在读取模型</small></article>
         <article class="metric-card"><span class="metric-label">GRAPH VERSION</span><strong id="metric-version">—</strong><small>LangGraph runtime</small></article>
         <article class="metric-card accent-amber"><span class="metric-label">EVIDENCE STANDARD</span><strong>TRACEABLE</strong><small>每个结论都绑定证据</small></article>
-        <article class="metric-card"><span class="metric-label">ACTIVE SCOPE</span><strong id="metric-scope">private</strong><small id="metric-tenant">tenant / demo-ui</small></article>
+        <article class="metric-card"><span class="metric-label">ACTIVE SCOPE</span><strong id="metric-scope">private</strong><small id="metric-tenant">tenant / clustering-priority-retry2</small></article>
       </section>
 
       <section class="workspace-grid">
@@ -78,7 +78,7 @@
           </article>
           <article class="panel context-panel">
             <div class="panel-topline"><span class="status-label">WORKSPACE CONTEXT</span><span class="context-live">LOCAL</span></div>
-            <label class="field-group"><span class="field-label">TENANT ID</span><input id="tenant-id" value="demo-ui" /></label>
+            <label class="field-group"><span class="field-label">TENANT ID</span><input id="tenant-id" value="clustering-priority-retry2" /></label>
             <label class="field-group"><span class="field-label">SECURITY SCOPE</span><input id="security-scope" value="private" /></label>
             <div class="domain-cloud"><span>software</span><span>medical</span><span>finance</span><span>legal</span><span>education</span><span>astrophysics</span></div>
             <p class="microcopy">作用域切换会同时影响入库、检索与线程事件。所有请求都带有租户边界。</p>
@@ -132,8 +132,65 @@
         </div>
       </section>
 
+      <section class="graph-section" id="knowledge-network">
+        <div class="section-heading"><div><span class="section-index">04</span><h2>知识网络</h2></div><span class="section-note" id="graph-summary">正在读取真实聚类与连接</span></div>
+        <article class="panel graph-panel">
+          <header class="graph-header">
+            <div>
+              <span class="status-label">CROSS-DOMAIN KNOWLEDGE MAP</span>
+              <p>力导向知识星图会自动拉开高密度节点。悬停查看一跳邻居，点击固定焦点，流动粒子表示当前关系路径。</p>
+            </div>
+            <div class="graph-legend" aria-label="知识网络图例">
+              <span><i class="legend-domain"></i>领域</span>
+              <span><i class="legend-cluster"></i>聚类</span>
+              <span><i class="legend-knowledge"></i>知识</span>
+              <span><i class="legend-gap"></i>缺口</span>
+            </div>
+          </header>
+          <div class="graph-workbench">
+            <aside class="graph-sidebar">
+              <label class="graph-search"><span>查找节点</span><input id="graph-search" placeholder="领域、知识或聚类" /></label>
+              <div class="graph-filter" id="graph-filter" aria-label="节点类型筛选">
+                <button class="active" type="button" data-type="all">全部</button>
+                <button type="button" data-type="domain">领域</button>
+                <button type="button" data-type="cluster">聚类</button>
+                <button type="button" data-type="knowledge">知识</button>
+                <button type="button" data-type="knowledge_gap">缺口</button>
+              </div>
+              <div class="graph-cluster-list" id="graph-cluster-list"></div>
+            </aside>
+            <div class="graph-canvas-wrap" id="graph-canvas-wrap">
+              <div class="graph-ambient-label" aria-hidden="true"><span>LIVE KNOWLEDGE FIELD</span><b id="graph-motion-status">动态布局</b></div>
+              <svg id="knowledge-graph-svg" viewBox="0 0 1000 620" role="img" aria-label="知识网络交互图">
+                <defs>
+                  <radialGradient id="graph-field-glow"><stop offset="0" stop-color="#dff7f3" stop-opacity=".82"></stop><stop offset=".5" stop-color="#edf8f6" stop-opacity=".28"></stop><stop offset="1" stop-color="#fff" stop-opacity="0"></stop></radialGradient>
+                  <filter id="graph-node-glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
+                </defs>
+                <g class="graph-field-rings" aria-hidden="true"><ellipse cx="500" cy="310" rx="390" ry="235"></ellipse><ellipse cx="500" cy="310" rx="270" ry="162"></ellipse><ellipse cx="500" cy="310" rx="145" ry="87"></ellipse></g>
+                <g id="graph-viewport"><g id="graph-edges"></g><g id="graph-particles"></g><g id="graph-nodes"></g></g>
+              </svg>
+              <div class="graph-empty" id="graph-empty"><span>⌁</span><strong>知识网络正在加载</strong><p>只显示当前 tenant / security scope 的真实节点。</p></div>
+              <div class="graph-controls"><button id="graph-color-mode" type="button">按聚类着色</button><button id="graph-motion" class="active" type="button">暂停漂移</button><button id="graph-zoom-out" type="button" title="缩小">−</button><button id="graph-fit" type="button">适配视图</button><button id="graph-zoom-in" type="button" title="放大">＋</button></div>
+            </div>
+            <aside class="graph-inspector" id="graph-inspector"></aside>
+          </div>
+        </article>
+      </section>
+
+      <section class="gap-section" id="knowledge-gaps">
+        <div class="section-heading"><div><span class="section-index">05</span><h2>待补知识</h2></div><span class="section-note" id="gap-summary">证据不足时主动拒答并等待补证</span></div>
+        <article class="panel gap-panel">
+          <div class="gap-ledger-intro">
+            <div><span class="status-label">开放缺口清单</span><p>这里不是失败垃圾箱。每条缺口都保留模型无法确定的具体问题、已尝试的联网研究、缺失证据与未来材料的链接键。</p></div>
+            <span class="gap-flow" aria-label="缺口处理轨迹"><b>拒答</b><i>→</i><b>搜索</b><i>→</i><b>待补证</b><i>→</i><b>链接关闭</b></span>
+          </div>
+          <div class="gap-grid" id="gap-grid"><div class="library-empty"><span class="empty-glyph">⌁</span><div><strong>待补知识正在加载</strong><p>只展示当前 tenant / security scope 的开放缺口。</p></div></div></div>
+          <button class="library-more-button hidden" id="gap-more" type="button"></button>
+        </article>
+      </section>
+
       <section class="library-section" id="knowledge-library">
-        <div class="section-heading"><div><span class="section-index">04</span><h2>Knowledge library</h2></div><span class="section-note" id="library-summary">已沉淀的 active knowledge</span></div>
+        <div class="section-heading"><div><span class="section-index">06</span><h2>Knowledge library</h2></div><span class="section-note" id="library-summary">已沉淀的 active knowledge</span></div>
         <article class="panel library-panel">
           <div class="library-toolbar">
             <div><span class="status-label">ACTIVE EXPERIENCE BASE</span><p>每条词条都展示 AI 的综合理解、原文逻辑、适用边界、证据对照和演进谱系。可按领域、主题、原文或理解内容筛选；点击“用这条经验检索”会自动带回正确领域。</p></div>
@@ -145,6 +202,6 @@
       </section>
       <footer><span>UNIVERSAL KNOWLEDGE AGENT</span><span>LOCAL PREVIEW · EVIDENCE ALWAYS WINS</span></footer>
     </main>
-    <script src="./app.js?v=20260810-review-desk-v3" defer></script>
+    <script src="./app.js?v=20260920-llm-wiki-graph-v2" defer></script>
   </body>
 </html>
